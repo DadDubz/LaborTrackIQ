@@ -168,6 +168,15 @@ class QuickBooksAuthorizationRead(BaseModel):
     state: str
 
 
+class QuickBooksConfigStatus(BaseModel):
+    configured: bool
+    client_id_present: bool
+    client_secret_present: bool
+    redirect_uri: str
+    environment: str
+    scopes: list[str]
+
+
 class QuickBooksExportRequest(BaseModel):
     start_date: date
     end_date: date

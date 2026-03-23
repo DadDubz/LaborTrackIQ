@@ -45,6 +45,17 @@ frontend/
 docs/
 ```
 
+## Local Setup
+
+1. Copy `.env.example` to `.env`
+2. Add your QuickBooks OAuth credentials when you are ready to test live QuickBooks auth
+3. Install backend requirements with `.venv/bin/pip install -r backend/requirements.txt`
+4. Install frontend packages with `npm install` in `frontend/`
+5. Start the API with `../.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000` from `backend/`
+6. Start the frontend with `npm run dev -- --host 127.0.0.1 --port 5173` from `frontend/`
+
+QuickBooks setup details live in `docs/quickbooks-setup.md`.
+
 ## Suggested Next Steps
 
 1. Add authentication and permissions with JWT or session auth

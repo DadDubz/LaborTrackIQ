@@ -38,6 +38,7 @@ from app.schemas import (
     OrganizationCreate,
     QuickBooksActionResponse,
     QuickBooksAuthorizationRead,
+    QuickBooksConfigStatus,
     QuickBooksConnectRequest,
     QuickBooksExportRequest,
     ReportRecipientCreate,
@@ -629,6 +630,25 @@ def get_quickbooks_authorize_url(
     }
     db.commit()
     return QuickBooksAuthorizationRead(authorization_url=build_authorization_url(state), state=state)
+
+
+@app.get(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/integrations/quickbooks/config-status",
+    response_model=QuickBooksConfigStatus,
+)
+def get_quickbooks_config_status(
+    organization_id: int,
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    return QuickBooksConfigStatus(
+        configured=bool(settings.quickbooks_client_id and settings.quickbooks_client_secret),
+        client_id_present=bool(settings.quickbooks_client_id),
+        client_secret_present=bool(settings.quickbooks_client_secret),
+        redirect_uri=settings.quickbooks_redirect_uri,
+        environment=settings.quickbooks_environment,
+        scopes=settings.quickbooks_scopes.split(),
+    )
 
 
 @app.get(f"{settings.api_prefix}/integrations/quickbooks/callback", response_model=QuickBooksActionResponse)

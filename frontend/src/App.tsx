@@ -79,6 +79,15 @@ type QuickBooksAuthorization = {
   state: string;
 };
 
+type QuickBooksConfigStatus = {
+  configured: boolean;
+  client_id_present: boolean;
+  client_secret_present: boolean;
+  redirect_uri: string;
+  environment: string;
+  scopes: string[];
+};
+
 type AdminTab = "employees" | "schedules" | "notes" | "integrations";
 
 const API_BASE = "http://127.0.0.1:8000/api";
@@ -132,6 +141,7 @@ export default function App() {
   const [setupMessage, setSetupMessage] = useState("Preparing demo workspace...");
   const [exportSummary, setExportSummary] = useState<QuickBooksActionResponse["export_summary"] | null>(null);
   const [quickBooksAuth, setQuickBooksAuth] = useState<QuickBooksAuthorization | null>(null);
+  const [quickBooksConfig, setQuickBooksConfig] = useState<QuickBooksConfigStatus | null>(null);
 
   const emptyEmployeeForm = {
     id: null as number | null,
@@ -241,11 +251,17 @@ export default function App() {
         apiFetch(`/organizations/${orgId}/notes`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/integrations`, {}, accessToken),
       ]);
+      const quickBooksConfigData = (await apiFetch(
+        `/organizations/${orgId}/integrations/quickbooks/config-status`,
+        {},
+        accessToken,
+      )) as QuickBooksConfigStatus;
       setSummary(summaryData as DashboardSummary);
       setEmployees(userData as User[]);
       setShifts(shiftData as Shift[]);
       setNotes(noteData as Note[]);
       setIntegrations(integrationData as Integration[]);
+      setQuickBooksConfig(quickBooksConfigData);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "Unable to load admin data.");
     }
@@ -1099,6 +1115,23 @@ export default function App() {
                           Launch QuickBooks authorization
                         </a>
                         <p className="code-line">{quickBooksAuth.authorization_url}</p>
+                      </div>
+                    ) : null}
+                    {quickBooksConfig ? (
+                      <div className="summary-card">
+                        <strong>OAuth Setup Status</strong>
+                        <p>
+                          {quickBooksConfig.configured
+                            ? "QuickBooks client credentials are loaded."
+                            : "QuickBooks client credentials are not loaded yet."}
+                        </p>
+                        <p>Environment: {quickBooksConfig.environment}</p>
+                        <p>Redirect URI: {quickBooksConfig.redirect_uri}</p>
+                        <p>Scopes: {quickBooksConfig.scopes.join(", ")}</p>
+                        <p>
+                          Client ID: {quickBooksConfig.client_id_present ? "present" : "missing"} | Client secret:{" "}
+                          {quickBooksConfig.client_secret_present ? "present" : "missing"}
+                        </p>
                       </div>
                     ) : null}
                   </form>
