@@ -20,6 +20,7 @@ from app.models import (
     ReportSubscription,
     ScheduleShift,
     TimeEntry,
+    TimeOffRequest,
     User,
     UserRole,
 )
@@ -48,6 +49,9 @@ from app.schemas import (
     SetupChecklistItem,
     SetupOverview,
     TimeEntryRead,
+    TimeOffRequestCreate,
+    TimeOffRequestRead,
+    TimeOffRequestUpdate,
     UserCreate,
     UserRead,
     UserUpdate,
@@ -196,6 +200,21 @@ def get_integration_for_admin(integration_id: int, current_user: User, db: Sessi
         raise HTTPException(status_code=404, detail="Integration not found.")
     validate_organization_access(integration.organization_id, current_user)
     return integration
+
+
+def get_employee_or_404(employee_id: int, organization_id: int, db: Session) -> User:
+    employee = db.get(User, employee_id)
+    if not employee or employee.organization_id != organization_id or employee.role != UserRole.EMPLOYEE:
+        raise HTTPException(status_code=404, detail="Employee not found.")
+    return employee
+
+
+def get_time_off_request_for_admin(request_id: int, current_user: User, db: Session) -> TimeOffRequest:
+    request = db.get(TimeOffRequest, request_id)
+    if not request:
+        raise HTTPException(status_code=404, detail="Time-off request not found.")
+    validate_organization_access(request.organization_id, current_user)
+    return request
 
 
 @app.get("/health")
@@ -406,6 +425,60 @@ def get_employee_schedule(employee_id: int, db: Session = Depends(get_db)):
         .order_by(ScheduleShift.start_at.asc())
     ).all()
     return list(shifts)
+
+
+@app.get(f"{settings.api_prefix}/employees/{{employee_id}}/time-off-requests", response_model=list[TimeOffRequestRead])
+def list_employee_time_off_requests(employee_id: int, db: Session = Depends(get_db)):
+    requests = db.scalars(
+        select(TimeOffRequest).where(TimeOffRequest.employee_id == employee_id).order_by(TimeOffRequest.created_at.desc())
+    ).all()
+    return list(requests)
+
+
+@app.post(f"{settings.api_prefix}/time-off-requests", response_model=TimeOffRequestRead)
+def create_time_off_request(payload: TimeOffRequestCreate, db: Session = Depends(get_db)):
+    employee = get_employee_or_404(payload.employee_id, payload.organization_id, db)
+    if payload.end_date < payload.start_date:
+        raise HTTPException(status_code=400, detail="end_date must be on or after start_date.")
+    request = TimeOffRequest(
+        organization_id=payload.organization_id,
+        employee_id=employee.id,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        reason=payload.reason,
+    )
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+@app.get(f"{settings.api_prefix}/organizations/{{organization_id}}/time-off-requests", response_model=list[TimeOffRequestRead])
+def list_org_time_off_requests(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    requests = db.scalars(
+        select(TimeOffRequest).where(TimeOffRequest.organization_id == organization_id).order_by(TimeOffRequest.created_at.desc())
+    ).all()
+    return list(requests)
+
+
+@app.put(f"{settings.api_prefix}/time-off-requests/{{request_id}}", response_model=TimeOffRequestRead)
+def update_time_off_request(
+    request_id: int,
+    payload: TimeOffRequestUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    request = get_time_off_request_for_admin(request_id, current_user, db)
+    request.status = payload.status
+    request.manager_response = payload.manager_response
+    db.commit()
+    db.refresh(request)
+    return request
 
 
 @app.post(f"{settings.api_prefix}/notes", response_model=NoteRead)

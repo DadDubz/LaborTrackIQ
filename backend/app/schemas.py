@@ -5,7 +5,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
-from app.models import IntegrationProvider, IntegrationStatus, UserRole
+from app.models import IntegrationProvider, IntegrationStatus, TimeOffStatus, UserRole
 
 
 class OrganizationCreate(BaseModel):
@@ -245,3 +245,30 @@ class SetupOverview(BaseModel):
     quickbooks_configured: bool
     quickbooks_connected: bool
     checklist: list[SetupChecklistItem]
+
+
+class TimeOffRequestCreate(BaseModel):
+    organization_id: int
+    employee_id: int
+    start_date: date
+    end_date: date
+    reason: str
+
+
+class TimeOffRequestRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    organization_id: int
+    employee_id: int
+    start_date: date
+    end_date: date
+    reason: str
+    status: TimeOffStatus
+    manager_response: Optional[str]
+    created_at: datetime
+
+
+class TimeOffRequestUpdate(BaseModel):
+    status: TimeOffStatus
+    manager_response: Optional[str] = None

@@ -32,6 +32,12 @@ class IntegrationStatus(str, Enum):
     ERROR = "error"
 
 
+class TimeOffStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+
+
 class Organization(Base):
     __tablename__ = "organizations"
 
@@ -44,6 +50,7 @@ class Organization(Base):
     notes: Mapped[list["ManagerNote"]] = relationship(back_populates="organization")
     shifts: Mapped[list["ScheduleShift"]] = relationship(back_populates="organization")
     time_entries: Mapped[list["TimeEntry"]] = relationship(back_populates="organization")
+    time_off_requests: Mapped[list["TimeOffRequest"]] = relationship(back_populates="organization")
 
 
 class User(Base):
@@ -63,6 +70,7 @@ class User(Base):
     scheduled_shifts: Mapped[list["ScheduleShift"]] = relationship(back_populates="employee")
     time_entries: Mapped[list["TimeEntry"]] = relationship(back_populates="employee")
     assigned_notes: Mapped[list["ManagerNote"]] = relationship(back_populates="employee")
+    time_off_requests: Mapped[list["TimeOffRequest"]] = relationship(back_populates="employee")
 
 
 class EmployeeProfile(Base):
@@ -149,3 +157,20 @@ class IntegrationConnection(Base):
     credentials_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     settings: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class TimeOffRequest(Base):
+    __tablename__ = "time_off_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[TimeOffStatus] = mapped_column(SqlEnum(TimeOffStatus), default=TimeOffStatus.PENDING)
+    manager_response: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    organization: Mapped["Organization"] = relationship(back_populates="time_off_requests")
+    employee: Mapped["User"] = relationship(back_populates="time_off_requests")

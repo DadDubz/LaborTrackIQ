@@ -109,7 +109,21 @@ type SetupOverview = {
   }>;
 };
 
-type AdminTab = "setup" | "employees" | "schedules" | "notes" | "integrations";
+type TimeOffRequest = {
+  id: number;
+  organization_id: number;
+  employee_id: number;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  status: string;
+  manager_response: string | null;
+  created_at: string;
+};
+
+type AdminTab = "setup" | "employees" | "schedules" | "notes" | "requests" | "integrations";
+type EmployeeTab = "home" | "schedule" | "request_off";
+type KeypadField = "employee" | "pin";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
@@ -138,14 +152,42 @@ function splitIsoDateTime(value: string) {
   };
 }
 
+function formatDate(dateValue: string) {
+  return new Date(dateValue).toLocaleDateString(undefined, { month: "short", day: "numeric", weekday: "short" });
+}
+
+function buildScheduleCalendar(shifts: Shift[]) {
+  if (shifts.length === 0) {
+    return [];
+  }
+  const byDate = new Map<string, Shift[]>();
+  for (const shift of shifts) {
+    const items = byDate.get(shift.shift_date) ?? [];
+    items.push(shift);
+    byDate.set(shift.shift_date, items);
+  }
+  return Array.from(byDate.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([shiftDate, items]) => ({ shiftDate, items }));
+}
+
 export default function App() {
   const [organizationId, setOrganizationId] = useState("1");
   const [employeeNumber, setEmployeeNumber] = useState("1001");
   const [pinCode, setPinCode] = useState("1234");
-  const [clockData, setClockData] = useState<ClockLookupResponse | null>(null);
-  const [clockStatus, setClockStatus] = useState("Ready for clock-in");
-  const [clockError, setClockError] = useState("");
+  const [activeKeypadField, setActiveKeypadField] = useState<KeypadField>("employee");
+  const [employeePortal, setEmployeePortal] = useState<ClockLookupResponse | null>(null);
+  const [employeeTab, setEmployeeTab] = useState<EmployeeTab>("home");
+  const [employeeClockMessage, setEmployeeClockMessage] = useState("Enter employee number and PIN to clock in.");
+  const [employeeError, setEmployeeError] = useState("");
   const [isClockLoading, setIsClockLoading] = useState(false);
+  const [employeeRequests, setEmployeeRequests] = useState<TimeOffRequest[]>([]);
+  const [requestOffForm, setRequestOffForm] = useState({
+    start_date: new Date().toISOString().slice(0, 10),
+    end_date: new Date().toISOString().slice(0, 10),
+    reason: "",
+  });
+  const [requestOffMessage, setRequestOffMessage] = useState("");
 
   const [adminEmail, setAdminEmail] = useState("admin@demodiner.com");
   const [adminPassword, setAdminPassword] = useState("admin1234");
@@ -158,7 +200,8 @@ export default function App() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
-  const [adminTab, setAdminTab] = useState<AdminTab>("employees");
+  const [orgTimeOffRequests, setOrgTimeOffRequests] = useState<TimeOffRequest[]>([]);
+  const [adminTab, setAdminTab] = useState<AdminTab>("setup");
   const [setupMessage, setSetupMessage] = useState("Preparing demo workspace...");
   const [exportSummary, setExportSummary] = useState<QuickBooksActionResponse["export_summary"] | null>(null);
   const [quickBooksAuth, setQuickBooksAuth] = useState<QuickBooksAuthorization | null>(null);
@@ -202,6 +245,11 @@ export default function App() {
     realm_id: "realm-1",
     start_date: new Date().toISOString().slice(0, 10),
     end_date: new Date().toISOString().slice(0, 10),
+  });
+  const [requestReviewForm, setRequestReviewForm] = useState({
+    id: null as number | null,
+    status: "pending",
+    manager_response: "",
   });
 
   useEffect(() => {
@@ -266,13 +314,14 @@ export default function App() {
 
   async function loadAdminData(accessToken: string, orgId: string) {
     try {
-      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData] = await Promise.all([
+      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData] = await Promise.all([
         apiFetch(`/organizations/${orgId}/dashboard-summary`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/users`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/shifts`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/notes`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/integrations`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/setup-overview`, {}, accessToken),
+        apiFetch(`/organizations/${orgId}/time-off-requests`, {}, accessToken),
       ]);
       const quickBooksConfigData = (await apiFetch(
         `/organizations/${orgId}/integrations/quickbooks/config-status`,
@@ -286,6 +335,7 @@ export default function App() {
       setIntegrations(integrationData as Integration[]);
       setQuickBooksConfig(quickBooksConfigData);
       setSetupOverview(setupOverviewData as SetupOverview);
+      setOrgTimeOffRequests(requestData as TimeOffRequest[]);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "Unable to load admin data.");
     }
@@ -301,6 +351,15 @@ export default function App() {
     await loadAdminData(token, organizationId);
   }
 
+  async function loadEmployeeRequests(employeeId: number) {
+    try {
+      const data = (await apiFetch(`/employees/${employeeId}/time-off-requests`, {}, "")) as TimeOffRequest[];
+      setEmployeeRequests(data);
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Unable to load requests.");
+    }
+  }
+
   function resetEmployeeForm() {
     setEmployeeForm(emptyEmployeeForm);
   }
@@ -313,36 +372,37 @@ export default function App() {
     setNoteForm(emptyNoteForm);
   }
 
-  async function handleScheduleLookup(event: FormEvent) {
-    event.preventDefault();
-    setIsClockLoading(true);
-    setClockError("");
-    try {
-      const data = (await apiFetch(
-        "/clock/lookup",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            organization_id: Number(organizationId),
-            employee_number: employeeNumber,
-            pin_code: pinCode,
-            source: "tablet",
-          }),
-        },
-        "",
-      )) as ClockLookupResponse;
-      setClockData(data);
-      setClockStatus(`Welcome ${data.employee_name}. Schedule loaded.`);
-    } catch (error) {
-      setClockError(error instanceof Error ? error.message : "Unable to load schedule.");
-    } finally {
-      setIsClockLoading(false);
+  function resetRequestReviewForm() {
+    setRequestReviewForm({ id: null, status: "pending", manager_response: "" });
+  }
+
+  function appendKeypadValue(value: string) {
+    if (activeKeypadField === "employee") {
+      setEmployeeNumber((current) => `${current}${value}`.slice(0, 8));
+    } else {
+      setPinCode((current) => `${current}${value}`.slice(0, 8));
     }
   }
 
-  async function handleClockToggle() {
+  function clearKeypadValue() {
+    if (activeKeypadField === "employee") {
+      setEmployeeNumber("");
+    } else {
+      setPinCode("");
+    }
+  }
+
+  function backspaceKeypadValue() {
+    if (activeKeypadField === "employee") {
+      setEmployeeNumber((current) => current.slice(0, -1));
+    } else {
+      setPinCode((current) => current.slice(0, -1));
+    }
+  }
+
+  async function handleEmployeeClockAction() {
     setIsClockLoading(true);
-    setClockError("");
+    setEmployeeError("");
     try {
       const data = (await apiFetch(
         "/clock/in-out",
@@ -352,20 +412,66 @@ export default function App() {
             organization_id: Number(organizationId),
             employee_number: employeeNumber,
             pin_code: pinCode,
-            source: "tablet",
+            source: "tablet-keypad",
           }),
         },
         "",
       )) as ClockResponse;
-      setClockData(data);
-      setClockStatus(`${data.employee_name} ${data.status.replace("_", " ")} successfully.`);
+      setEmployeePortal(data);
+      setEmployeeTab("home");
+      setEmployeeClockMessage(`${data.employee_name} ${data.status.replace("_", " ")} successfully.`);
+      setRequestOffMessage("");
+      await loadEmployeeRequests(data.employee_id);
       if (token) {
         await loadAdminData(token, organizationId);
       }
     } catch (error) {
-      setClockError(error instanceof Error ? error.message : "Unable to clock in or out.");
+      setEmployeeError(error instanceof Error ? error.message : "Unable to clock in or out.");
     } finally {
       setIsClockLoading(false);
+    }
+  }
+
+  function handleEmployeeLogout() {
+    setEmployeePortal(null);
+    setEmployeeTab("home");
+    setEmployeeClockMessage("Employee signed out from the kiosk.");
+    setRequestOffMessage("");
+    setEmployeeRequests([]);
+    setPinCode("");
+    setActiveKeypadField("employee");
+  }
+
+  async function handleRequestOffSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!employeePortal) {
+      return;
+    }
+    setEmployeeError("");
+    try {
+      await apiFetch(
+        "/time-off-requests",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            organization_id: Number(organizationId),
+            employee_id: employeePortal.employee_id,
+            start_date: requestOffForm.start_date,
+            end_date: requestOffForm.end_date,
+            reason: requestOffForm.reason,
+          }),
+        },
+        "",
+      );
+      setRequestOffMessage("Request off submitted for manager review.");
+      setRequestOffForm({
+        start_date: new Date().toISOString().slice(0, 10),
+        end_date: new Date().toISOString().slice(0, 10),
+        reason: "",
+      });
+      await loadEmployeeRequests(employeePortal.employee_id);
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Unable to submit request off.");
     }
   }
 
@@ -405,6 +511,7 @@ export default function App() {
     setShifts([]);
     setNotes([]);
     setIntegrations([]);
+    setSetupOverview(null);
     setAdminMessage("Signed out.");
     window.localStorage.removeItem("labortrackiq_token");
     window.localStorage.removeItem("labortrackiq_user");
@@ -643,97 +750,256 @@ export default function App() {
     }
   }
 
-  const displayedShifts = clockData?.schedule ?? [];
-  const displayedNotes = clockData?.notes ?? [];
+  async function handleReviewRequest(event: FormEvent) {
+    event.preventDefault();
+    if (!requestReviewForm.id) {
+      return;
+    }
+    setAdminError("");
+    try {
+      await apiFetch(`/time-off-requests/${requestReviewForm.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          status: requestReviewForm.status,
+          manager_response: requestReviewForm.manager_response || null,
+        }),
+      });
+      await refreshAdminData("Time-off request updated.");
+      resetRequestReviewForm();
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to update request.");
+    }
+  }
+
+  const employeeHomeShifts = employeePortal?.schedule.slice(0, 3) ?? [];
+  const employeeNotes = employeePortal?.notes ?? [];
+  const scheduleCalendar = buildScheduleCalendar(employeePortal?.schedule ?? []);
   const employeeOptions = employees.filter((employee) => employee.role === "employee");
   const quickBooksIntegration = integrations.find((integration) => integration.provider === "quickbooks");
 
   return (
     <div className="app-shell">
-      <section className="hero-panel">
-        <div className="hero-copy">
-          <p className="eyebrow">LaborTrackIQ</p>
-          <h1>Tablet Time Clock Built for Fast Shift Starts</h1>
-          <p className="hero-text">
-            Employees can clock in, check schedules, and see manager notes from a shared tablet while admins manage
-            schedules, labor records, and accounting syncs in one place.
-          </p>
-          <p className="status-strip">{setupMessage}</p>
-        </div>
+      <section className="employee-shell">
+        {!employeePortal ? (
+          <div className="kiosk-layout">
+            <div className="kiosk-copy panel">
+              <p className="eyebrow">Employee Clock</p>
+              <h1 className="kiosk-title">Clock In With the Keypad</h1>
+              <p className="hero-text">
+                Employees use the keypad to enter their employee number and PIN. After clock-in, they land on their
+                home screen with notes, current schedule, full calendar, and request-off tools.
+              </p>
+              <div className="status-strip">{setupMessage}</div>
+            </div>
 
-        <form className="clock-card" onSubmit={handleScheduleLookup}>
-          <h2>Clock Terminal</h2>
-          <div className="terminal-fields">
-            <label>
-              Organization ID
-              <input value={organizationId} onChange={(event) => setOrganizationId(event.target.value)} />
-            </label>
-            <label>
-              Employee Number
-              <input value={employeeNumber} onChange={(event) => setEmployeeNumber(event.target.value)} />
-            </label>
-            <label>
-              PIN
-              <input type="password" value={pinCode} onChange={(event) => setPinCode(event.target.value)} />
-            </label>
+            <div className="kiosk-panel">
+              <div className="field-toggle-row">
+                <button
+                  className={activeKeypadField === "employee" ? "field-pill active-field-pill" : "field-pill"}
+                  type="button"
+                  onClick={() => setActiveKeypadField("employee")}
+                >
+                  Employee #{employeeNumber || "Tap to enter"}
+                </button>
+                <button
+                  className={activeKeypadField === "pin" ? "field-pill active-field-pill" : "field-pill"}
+                  type="button"
+                  onClick={() => setActiveKeypadField("pin")}
+                >
+                  PIN {pinCode ? "*".repeat(pinCode.length) : "Tap to enter"}
+                </button>
+              </div>
+
+              <div className="keypad-grid">
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "<"].map((key) => (
+                  <button
+                    key={key}
+                    className={key === "C" || key === "<" ? "keypad-button keypad-button-secondary" : "keypad-button"}
+                    type="button"
+                    onClick={() => {
+                      if (key === "C") {
+                        clearKeypadValue();
+                        return;
+                      }
+                      if (key === "<") {
+                        backspaceKeypadValue();
+                        return;
+                      }
+                      appendKeypadValue(key);
+                    }}
+                  >
+                    {key}
+                  </button>
+                ))}
+              </div>
+
+              <button className="primary-button wide-button" type="button" onClick={() => void handleEmployeeClockAction()} disabled={isClockLoading}>
+                {isClockLoading ? "Working..." : "Clock In / Out"}
+              </button>
+
+              <div className="note-banner">{employeeError || employeeClockMessage}</div>
+            </div>
           </div>
-          <div className="terminal-actions">
-            <button className="primary-button" type="button" onClick={() => void handleClockToggle()} disabled={isClockLoading}>
-              {isClockLoading ? "Working..." : "Clock In / Out"}
-            </button>
-            <button className="secondary-button" type="submit" disabled={isClockLoading}>
-              View Schedule
-            </button>
+        ) : (
+          <div className="employee-portal">
+            <div className="employee-portal-header">
+              <div>
+                <p className="eyebrow">Employee Home</p>
+                <h1 className="kiosk-title">{employeePortal.employee_name}</h1>
+                <p className="hero-text">{employeeClockMessage}</p>
+              </div>
+              <div className="employee-portal-actions">
+                <button className="primary-button" type="button" onClick={() => void handleEmployeeClockAction()}>
+                  Clock In / Out
+                </button>
+                <button className="ghost-button" type="button" onClick={handleEmployeeLogout}>
+                  Log Out
+                </button>
+              </div>
+            </div>
+
+            <div className="tab-row">
+              {(["home", "schedule", "request_off"] as EmployeeTab[]).map((tab) => (
+                <button
+                  key={tab}
+                  className={employeeTab === tab ? "tab active-tab" : "tab"}
+                  type="button"
+                  onClick={() => setEmployeeTab(tab)}
+                >
+                  {tab === "request_off" ? "Request Off" : tab[0].toUpperCase() + tab.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            {employeeError ? <div className="inline-error">{employeeError}</div> : null}
+            {requestOffMessage ? <div className="inline-message">{requestOffMessage}</div> : null}
+
+            {employeeTab === "home" ? (
+              <div className="employee-grid">
+                <article className="panel">
+                  <div className="panel-heading">
+                    <p className="eyebrow">Shift Notes</p>
+                    <h3>What You Need Today</h3>
+                  </div>
+                  <div className="notes">
+                    {employeeNotes.length > 0 ? (
+                      employeeNotes.map((note) => (
+                        <div className="note-card" key={note.id}>
+                          <strong>{note.title}</strong>
+                          <p>{note.body}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="empty-state">No manager notes are posted for this shift yet.</div>
+                    )}
+                  </div>
+                </article>
+
+                <article className="panel">
+                  <div className="panel-heading">
+                    <p className="eyebrow">Coming Up</p>
+                    <h3>Your Next Shifts</h3>
+                  </div>
+                  <div className="list">
+                    {employeeHomeShifts.length > 0 ? (
+                      employeeHomeShifts.map((shift) => {
+                        const window = formatShiftWindow(shift);
+                        return (
+                          <div className="list-row" key={shift.id}>
+                            <div>
+                              <strong>{window.day}</strong>
+                              <p>{window.time}</p>
+                            </div>
+                            <span>{shift.role_label ?? shift.location_name ?? "Scheduled"}</span>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="empty-state">No upcoming shifts are posted yet.</div>
+                    )}
+                  </div>
+                </article>
+              </div>
+            ) : null}
+
+            {employeeTab === "schedule" ? (
+              <article className="panel">
+                <div className="panel-heading">
+                  <p className="eyebrow">Schedule</p>
+                  <h3>Bi-Weekly / Monthly View</h3>
+                </div>
+                <div className="schedule-calendar">
+                  {scheduleCalendar.length > 0 ? (
+                    scheduleCalendar.map((day) => (
+                      <div className="calendar-day" key={day.shiftDate}>
+                        <strong>{formatDate(day.shiftDate)}</strong>
+                        {day.items.map((shift) => {
+                          const window = formatShiftWindow(shift);
+                          return (
+                            <div className="calendar-shift" key={shift.id}>
+                              <p>{window.time}</p>
+                              <p>{shift.role_label ?? shift.location_name ?? "Scheduled"}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="empty-state">No schedule has been posted for you yet.</div>
+                  )}
+                </div>
+              </article>
+            ) : null}
+
+            {employeeTab === "request_off" ? (
+              <div className="employee-grid">
+                <form className="stack-form" onSubmit={handleRequestOffSubmit}>
+                  <h4>Request Off</h4>
+                  <div className="split-row">
+                    <input
+                      type="date"
+                      value={requestOffForm.start_date}
+                      onChange={(event) => setRequestOffForm({ ...requestOffForm, start_date: event.target.value })}
+                    />
+                    <input
+                      type="date"
+                      value={requestOffForm.end_date}
+                      onChange={(event) => setRequestOffForm({ ...requestOffForm, end_date: event.target.value })}
+                    />
+                  </div>
+                  <textarea
+                    placeholder="Tell the admin why you need the time off"
+                    value={requestOffForm.reason}
+                    onChange={(event) => setRequestOffForm({ ...requestOffForm, reason: event.target.value })}
+                  />
+                  <button className="primary-button" type="submit">
+                    Submit Request
+                  </button>
+                </form>
+
+                <div className="scroll-list">
+                  {employeeRequests.length > 0 ? (
+                    employeeRequests.map((request) => (
+                      <div className="entity-card" key={request.id}>
+                        <strong>
+                          {formatDate(request.start_date)} to {formatDate(request.end_date)}
+                        </strong>
+                        <p>{request.reason}</p>
+                        <p>Status: {request.status}</p>
+                        {request.manager_response ? <p>Manager reply: {request.manager_response}</p> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="empty-state">No request-off submissions yet.</div>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </div>
-          <div className="note-banner">{clockError || clockStatus}</div>
-        </form>
+        )}
       </section>
 
       <section className="dashboard-grid">
-        <article className="panel">
-          <div className="panel-heading">
-            <p className="eyebrow">Upcoming</p>
-            <h3>Schedule</h3>
-          </div>
-          <div className="list">
-            {displayedShifts.length > 0 ? (
-              displayedShifts.map((shift) => {
-                const window = formatShiftWindow(shift);
-                return (
-                  <div className="list-row" key={shift.id}>
-                    <div>
-                      <strong>{window.day}</strong>
-                      <p>{window.time}</p>
-                    </div>
-                    <span>{shift.role_label ?? shift.location_name ?? "Scheduled"}</span>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="empty-state">Load an employee schedule to show upcoming shifts.</div>
-            )}
-          </div>
-        </article>
-
-        <article className="panel">
-          <div className="panel-heading">
-            <p className="eyebrow">Manager Notes</p>
-            <h3>Shift Messages</h3>
-          </div>
-          <div className="notes">
-            {displayedNotes.length > 0 ? (
-              displayedNotes.map((note) => (
-                <div className="note-card" key={note.id}>
-                  <strong>{note.title}</strong>
-                  <p>{note.body}</p>
-                </div>
-              ))
-            ) : (
-              <div className="empty-state">Clock in or load a schedule to see manager notes.</div>
-            )}
-          </div>
-        </article>
-
         <article className="panel admin-panel admin-panel-expanded">
           <div className="panel-heading">
             <p className="eyebrow">Admin View</p>
@@ -765,7 +1031,7 @@ export default function App() {
                 </button>
               </div>
               <div className="tab-row">
-                {(["setup", "employees", "schedules", "notes", "integrations"] as AdminTab[]).map((tab) => (
+                {(["setup", "employees", "schedules", "notes", "requests", "integrations"] as AdminTab[]).map((tab) => (
                   <button
                     key={tab}
                     className={adminTab === tab ? "tab active-tab" : "tab"}
@@ -851,37 +1117,13 @@ export default function App() {
                 <div className="admin-section">
                   <form className="stack-form" onSubmit={handleSubmitEmployee}>
                     <h4>{employeeForm.id ? "Edit Employee" : "Add Employee"}</h4>
-                    <input
-                      placeholder="Full name"
-                      value={employeeForm.full_name}
-                      onChange={(event) => setEmployeeForm({ ...employeeForm, full_name: event.target.value })}
-                    />
-                    <input
-                      placeholder="Email"
-                      value={employeeForm.email}
-                      onChange={(event) => setEmployeeForm({ ...employeeForm, email: event.target.value })}
-                    />
-                    <input
-                      placeholder="Employee number"
-                      value={employeeForm.employee_number}
-                      onChange={(event) => setEmployeeForm({ ...employeeForm, employee_number: event.target.value })}
-                    />
-                    <input
-                      placeholder="PIN"
-                      value={employeeForm.pin_code}
-                      onChange={(event) => setEmployeeForm({ ...employeeForm, pin_code: event.target.value })}
-                    />
-                    <input
-                      placeholder="Job title"
-                      value={employeeForm.job_title}
-                      onChange={(event) => setEmployeeForm({ ...employeeForm, job_title: event.target.value })}
-                    />
+                    <input placeholder="Full name" value={employeeForm.full_name} onChange={(event) => setEmployeeForm({ ...employeeForm, full_name: event.target.value })} />
+                    <input placeholder="Email" value={employeeForm.email} onChange={(event) => setEmployeeForm({ ...employeeForm, email: event.target.value })} />
+                    <input placeholder="Employee number" value={employeeForm.employee_number} onChange={(event) => setEmployeeForm({ ...employeeForm, employee_number: event.target.value })} />
+                    <input placeholder="PIN" value={employeeForm.pin_code} onChange={(event) => setEmployeeForm({ ...employeeForm, pin_code: event.target.value })} />
+                    <input placeholder="Job title" value={employeeForm.job_title} onChange={(event) => setEmployeeForm({ ...employeeForm, job_title: event.target.value })} />
                     <label className="checkbox-row">
-                      <input
-                        type="checkbox"
-                        checked={employeeForm.is_active}
-                        onChange={(event) => setEmployeeForm({ ...employeeForm, is_active: event.target.checked })}
-                      />
+                      <input type="checkbox" checked={employeeForm.is_active} onChange={(event) => setEmployeeForm({ ...employeeForm, is_active: event.target.checked })} />
                       Active employee
                     </label>
                     <div className="action-row">
@@ -932,10 +1174,7 @@ export default function App() {
                 <div className="admin-section">
                   <form className="stack-form" onSubmit={handleSubmitShift}>
                     <h4>{shiftForm.id ? "Edit Shift" : "Add Shift"}</h4>
-                    <select
-                      value={shiftForm.employee_id}
-                      onChange={(event) => setShiftForm({ ...shiftForm, employee_id: event.target.value })}
-                    >
+                    <select value={shiftForm.employee_id} onChange={(event) => setShiftForm({ ...shiftForm, employee_id: event.target.value })}>
                       <option value="">Select employee</option>
                       {employeeOptions.map((employee) => (
                         <option key={employee.id} value={employee.id}>
@@ -943,33 +1182,13 @@ export default function App() {
                         </option>
                       ))}
                     </select>
-                    <input
-                      type="date"
-                      value={shiftForm.shift_date}
-                      onChange={(event) => setShiftForm({ ...shiftForm, shift_date: event.target.value })}
-                    />
+                    <input type="date" value={shiftForm.shift_date} onChange={(event) => setShiftForm({ ...shiftForm, shift_date: event.target.value })} />
                     <div className="split-row">
-                      <input
-                        type="time"
-                        value={shiftForm.start_time}
-                        onChange={(event) => setShiftForm({ ...shiftForm, start_time: event.target.value })}
-                      />
-                      <input
-                        type="time"
-                        value={shiftForm.end_time}
-                        onChange={(event) => setShiftForm({ ...shiftForm, end_time: event.target.value })}
-                      />
+                      <input type="time" value={shiftForm.start_time} onChange={(event) => setShiftForm({ ...shiftForm, start_time: event.target.value })} />
+                      <input type="time" value={shiftForm.end_time} onChange={(event) => setShiftForm({ ...shiftForm, end_time: event.target.value })} />
                     </div>
-                    <input
-                      placeholder="Location"
-                      value={shiftForm.location_name}
-                      onChange={(event) => setShiftForm({ ...shiftForm, location_name: event.target.value })}
-                    />
-                    <input
-                      placeholder="Role label"
-                      value={shiftForm.role_label}
-                      onChange={(event) => setShiftForm({ ...shiftForm, role_label: event.target.value })}
-                    />
+                    <input placeholder="Location" value={shiftForm.location_name} onChange={(event) => setShiftForm({ ...shiftForm, location_name: event.target.value })} />
+                    <input placeholder="Role label" value={shiftForm.role_label} onChange={(event) => setShiftForm({ ...shiftForm, role_label: event.target.value })} />
                     <div className="action-row">
                       <button className="primary-button" type="submit">
                         {shiftForm.id ? "Save Shift" : "Create Shift"}
@@ -1022,10 +1241,7 @@ export default function App() {
                 <div className="admin-section">
                   <form className="stack-form" onSubmit={handleSubmitNote}>
                     <h4>{noteForm.id ? "Edit Manager Note" : "Add Manager Note"}</h4>
-                    <select
-                      value={noteForm.employee_id}
-                      onChange={(event) => setNoteForm({ ...noteForm, employee_id: event.target.value })}
-                    >
+                    <select value={noteForm.employee_id} onChange={(event) => setNoteForm({ ...noteForm, employee_id: event.target.value })}>
                       <option value="all">All employees</option>
                       {employeeOptions.map((employee) => (
                         <option key={employee.id} value={employee.id}>
@@ -1033,22 +1249,10 @@ export default function App() {
                         </option>
                       ))}
                     </select>
-                    <input
-                      placeholder="Title"
-                      value={noteForm.title}
-                      onChange={(event) => setNoteForm({ ...noteForm, title: event.target.value })}
-                    />
-                    <textarea
-                      placeholder="Message for the shift team"
-                      value={noteForm.body}
-                      onChange={(event) => setNoteForm({ ...noteForm, body: event.target.value })}
-                    />
+                    <input placeholder="Title" value={noteForm.title} onChange={(event) => setNoteForm({ ...noteForm, title: event.target.value })} />
+                    <textarea placeholder="Message for the shift team" value={noteForm.body} onChange={(event) => setNoteForm({ ...noteForm, body: event.target.value })} />
                     <label className="checkbox-row">
-                      <input
-                        type="checkbox"
-                        checked={noteForm.is_active}
-                        onChange={(event) => setNoteForm({ ...noteForm, is_active: event.target.checked })}
-                      />
+                      <input type="checkbox" checked={noteForm.is_active} onChange={(event) => setNoteForm({ ...noteForm, is_active: event.target.checked })} />
                       Active note
                     </label>
                     <label className="checkbox-row">
@@ -1103,31 +1307,75 @@ export default function App() {
                 </div>
               ) : null}
 
+              {adminTab === "requests" ? (
+                <div className="admin-section">
+                  <form className="stack-form" onSubmit={handleReviewRequest}>
+                    <h4>Review Request</h4>
+                    <select
+                      value={requestReviewForm.status}
+                      onChange={(event) => setRequestReviewForm({ ...requestReviewForm, status: event.target.value })}
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="approved">Approved</option>
+                      <option value="denied">Denied</option>
+                    </select>
+                    <textarea
+                      placeholder="Optional manager response"
+                      value={requestReviewForm.manager_response}
+                      onChange={(event) => setRequestReviewForm({ ...requestReviewForm, manager_response: event.target.value })}
+                    />
+                    <div className="action-row">
+                      <button className="primary-button" type="submit" disabled={!requestReviewForm.id}>
+                        Save Review
+                      </button>
+                      <button className="ghost-button" type="button" onClick={resetRequestReviewForm}>
+                        Clear
+                      </button>
+                    </div>
+                  </form>
+                  <div className="scroll-list">
+                    {orgTimeOffRequests.length > 0 ? (
+                      orgTimeOffRequests.map((request) => {
+                        const employee = employeeOptions.find((item) => item.id === request.employee_id);
+                        return (
+                          <button
+                            className="entity-card entity-button"
+                            key={request.id}
+                            type="button"
+                            onClick={() =>
+                              setRequestReviewForm({
+                                id: request.id,
+                                status: request.status,
+                                manager_response: request.manager_response ?? "",
+                              })
+                            }
+                          >
+                            <strong>{employee?.full_name ?? `Employee ${request.employee_id}`}</strong>
+                            <p>
+                              {formatDate(request.start_date)} to {formatDate(request.end_date)}
+                            </p>
+                            <p>{request.reason}</p>
+                            <p>Status: {request.status}</p>
+                            {request.manager_response ? <p>Manager reply: {request.manager_response}</p> : null}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="empty-state">No time-off requests have been submitted yet.</div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
               {adminTab === "integrations" ? (
                 <div className="admin-section">
                   <form className="stack-form" onSubmit={(event) => event.preventDefault()}>
                     <h4>QuickBooks</h4>
-                    <input
-                      placeholder="Company name"
-                      value={quickBooksForm.company_name}
-                      onChange={(event) => setQuickBooksForm({ ...quickBooksForm, company_name: event.target.value })}
-                    />
-                    <input
-                      placeholder="Realm ID"
-                      value={quickBooksForm.realm_id}
-                      onChange={(event) => setQuickBooksForm({ ...quickBooksForm, realm_id: event.target.value })}
-                    />
+                    <input placeholder="Company name" value={quickBooksForm.company_name} onChange={(event) => setQuickBooksForm({ ...quickBooksForm, company_name: event.target.value })} />
+                    <input placeholder="Realm ID" value={quickBooksForm.realm_id} onChange={(event) => setQuickBooksForm({ ...quickBooksForm, realm_id: event.target.value })} />
                     <div className="split-row">
-                      <input
-                        type="date"
-                        value={quickBooksForm.start_date}
-                        onChange={(event) => setQuickBooksForm({ ...quickBooksForm, start_date: event.target.value })}
-                      />
-                      <input
-                        type="date"
-                        value={quickBooksForm.end_date}
-                        onChange={(event) => setQuickBooksForm({ ...quickBooksForm, end_date: event.target.value })}
-                      />
+                      <input type="date" value={quickBooksForm.start_date} onChange={(event) => setQuickBooksForm({ ...quickBooksForm, start_date: event.target.value })} />
+                      <input type="date" value={quickBooksForm.end_date} onChange={(event) => setQuickBooksForm({ ...quickBooksForm, end_date: event.target.value })} />
                     </div>
                     <div className="action-row">
                       <button className="ghost-button" type="button" onClick={() => void handleGenerateQuickBooksAuthUrl()}>
@@ -1138,27 +1386,13 @@ export default function App() {
                       </button>
                       {quickBooksIntegration ? (
                         <>
-                          <button
-                            className="ghost-button"
-                            type="button"
-                            disabled={quickBooksIntegration.status !== "connected"}
-                            onClick={() => void handleExportLabor(quickBooksIntegration.id)}
-                          >
+                          <button className="ghost-button" type="button" disabled={quickBooksIntegration.status !== "connected"} onClick={() => void handleExportLabor(quickBooksIntegration.id)}>
                             Export Labor
                           </button>
-                          <button
-                            className="ghost-button"
-                            type="button"
-                            disabled={quickBooksIntegration.status !== "connected"}
-                            onClick={() => void handleRefreshQuickBooks(quickBooksIntegration.id)}
-                          >
+                          <button className="ghost-button" type="button" disabled={quickBooksIntegration.status !== "connected"} onClick={() => void handleRefreshQuickBooks(quickBooksIntegration.id)}>
                             Refresh Tokens
                           </button>
-                          <button
-                            className="danger-button"
-                            type="button"
-                            onClick={() => void handleDisconnectIntegration(quickBooksIntegration.id)}
-                          >
+                          <button className="danger-button" type="button" onClick={() => void handleDisconnectIntegration(quickBooksIntegration.id)}>
                             Disconnect
                           </button>
                         </>
@@ -1188,17 +1422,12 @@ export default function App() {
                     {quickBooksConfig ? (
                       <div className="summary-card">
                         <strong>OAuth Setup Status</strong>
-                        <p>
-                          {quickBooksConfig.configured
-                            ? "QuickBooks client credentials are loaded."
-                            : "QuickBooks client credentials are not loaded yet."}
-                        </p>
+                        <p>{quickBooksConfig.configured ? "QuickBooks client credentials are loaded." : "QuickBooks client credentials are not loaded yet."}</p>
                         <p>Environment: {quickBooksConfig.environment}</p>
                         <p>Redirect URI: {quickBooksConfig.redirect_uri}</p>
                         <p>Scopes: {quickBooksConfig.scopes.join(", ")}</p>
                         <p>
-                          Client ID: {quickBooksConfig.client_id_present ? "present" : "missing"} | Client secret:{" "}
-                          {quickBooksConfig.client_secret_present ? "present" : "missing"}
+                          Client ID: {quickBooksConfig.client_id_present ? "present" : "missing"} | Client secret: {quickBooksConfig.client_secret_present ? "present" : "missing"}
                         </p>
                       </div>
                     ) : null}
@@ -1208,15 +1437,9 @@ export default function App() {
                       <div className="entity-card">
                         <strong>QuickBooks</strong>
                         <p>Status: {quickBooksIntegration.status}</p>
-                        <p>
-                          Company: {(quickBooksIntegration.settings?.company_name as string | undefined) ?? "Not set"}
-                        </p>
-                        <p>
-                          Realm: {(quickBooksIntegration.settings?.realm_id as string | undefined) ?? "Not set"}
-                        </p>
-                        <p>
-                          Last sync: {quickBooksIntegration.last_synced_at ? new Date(quickBooksIntegration.last_synced_at).toLocaleString() : "Never"}
-                        </p>
+                        <p>Company: {(quickBooksIntegration.settings?.company_name as string | undefined) ?? "Not set"}</p>
+                        <p>Realm: {(quickBooksIntegration.settings?.realm_id as string | undefined) ?? "Not set"}</p>
+                        <p>Last sync: {quickBooksIntegration.last_synced_at ? new Date(quickBooksIntegration.last_synced_at).toLocaleString() : "Never"}</p>
                       </div>
                     ) : (
                       <div className="empty-state">Connect QuickBooks to simulate labor exports for accounting.</div>
