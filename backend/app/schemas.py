@@ -40,8 +40,27 @@ class UserRead(BaseModel):
     job_title: Optional[str] = None
 
 
+class UserUpdate(BaseModel):
+    full_name: str
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    employee_number: Optional[str] = None
+    pin_code: Optional[str] = None
+    job_title: Optional[str] = None
+    is_active: bool = True
+
+
 class ShiftCreate(BaseModel):
     organization_id: int
+    employee_id: int
+    shift_date: date
+    start_at: datetime
+    end_at: datetime
+    location_name: Optional[str] = None
+    role_label: Optional[str] = None
+
+
+class ShiftUpdate(BaseModel):
     employee_id: int
     shift_date: date
     start_at: datetime
@@ -83,6 +102,14 @@ class NoteRead(BaseModel):
     is_active: bool
     show_at_clock_in: bool
     created_at: datetime
+
+
+class NoteUpdate(BaseModel):
+    employee_id: Optional[int] = None
+    title: str
+    body: str
+    is_active: bool = True
+    show_at_clock_in: bool = True
 
 
 class ClockAction(BaseModel):
@@ -128,6 +155,23 @@ class IntegrationConnectionRead(BaseModel):
     status: IntegrationStatus
     settings: Optional[dict]
     last_synced_at: Optional[datetime]
+
+
+class QuickBooksConnectRequest(BaseModel):
+    organization_id: int
+    realm_id: Optional[str] = None
+    company_name: Optional[str] = None
+
+
+class QuickBooksExportRequest(BaseModel):
+    start_date: date
+    end_date: date
+
+
+class QuickBooksActionResponse(BaseModel):
+    message: str
+    integration: IntegrationConnectionRead
+    export_summary: Optional[dict] = None
 
 
 class ClockResponse(BaseModel):

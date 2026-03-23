@@ -34,13 +34,19 @@ from app.schemas import (
     LoginResponse,
     NoteCreate,
     NoteRead,
+    NoteUpdate,
     OrganizationCreate,
+    QuickBooksActionResponse,
+    QuickBooksConnectRequest,
+    QuickBooksExportRequest,
     ReportRecipientCreate,
     ShiftCreate,
     ShiftRead,
+    ShiftUpdate,
     TimeEntryRead,
     UserCreate,
     UserRead,
+    UserUpdate,
 )
 from app.security import create_access_token, decode_access_token, hash_password, verify_password
 
@@ -142,6 +148,45 @@ def serialize_user(user: User) -> UserRead:
     )
 
 
+def get_employee_profile_or_404(user_id: int, db: Session) -> EmployeeProfile:
+    profile = db.scalar(select(EmployeeProfile).where(EmployeeProfile.user_id == user_id))
+    if not profile:
+        raise HTTPException(status_code=404, detail="Employee profile not found.")
+    return profile
+
+
+def get_user_for_admin(user_id: int, current_user: User, db: Session) -> User:
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    validate_organization_access(user.organization_id, current_user)
+    return user
+
+
+def get_shift_for_admin(shift_id: int, current_user: User, db: Session) -> ScheduleShift:
+    shift = db.get(ScheduleShift, shift_id)
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found.")
+    validate_organization_access(shift.organization_id, current_user)
+    return shift
+
+
+def get_note_for_admin(note_id: int, current_user: User, db: Session) -> ManagerNote:
+    note = db.get(ManagerNote, note_id)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found.")
+    validate_organization_access(note.organization_id, current_user)
+    return note
+
+
+def get_integration_for_admin(integration_id: int, current_user: User, db: Session) -> IntegrationConnection:
+    integration = db.get(IntegrationConnection, integration_id)
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integration not found.")
+    validate_organization_access(integration.organization_id, current_user)
+    return integration
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok", "app": settings.app_name}
@@ -241,6 +286,49 @@ def list_users(
     return [serialize_user(user) for user in users]
 
 
+@app.put(f"{settings.api_prefix}/users/{{user_id}}", response_model=UserRead)
+def update_user(
+    user_id: int,
+    payload: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    user = get_user_for_admin(user_id, current_user, db)
+    user.full_name = payload.full_name
+    user.email = payload.email
+    user.is_active = payload.is_active
+
+    if payload.password:
+        user.password_hash = hash_password(payload.password)
+
+    if user.role == UserRole.EMPLOYEE:
+        profile = get_employee_profile_or_404(user.id, db)
+        if not payload.employee_number or not payload.pin_code:
+            raise HTTPException(status_code=400, detail="Employees require employee_number and pin_code.")
+        profile.employee_number = payload.employee_number
+        profile.pin_code = payload.pin_code
+        profile.job_title = payload.job_title
+
+    db.commit()
+    db.refresh(user)
+    return serialize_user(user)
+
+
+@app.delete(f"{settings.api_prefix}/users/{{user_id}}", response_model=dict)
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    user = get_user_for_admin(user_id, current_user, db)
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+
+    user.is_active = False
+    db.commit()
+    return {"message": f"{user.full_name} archived successfully."}
+
+
 @app.post(f"{settings.api_prefix}/shifts", response_model=ShiftRead)
 def create_shift(
     payload: ShiftCreate,
@@ -266,6 +354,37 @@ def list_shifts(
         select(ScheduleShift).where(ScheduleShift.organization_id == organization_id).order_by(ScheduleShift.start_at.asc())
     ).all()
     return list(shifts)
+
+
+@app.put(f"{settings.api_prefix}/shifts/{{shift_id}}", response_model=ShiftRead)
+def update_shift(
+    shift_id: int,
+    payload: ShiftUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    shift = get_shift_for_admin(shift_id, current_user, db)
+    shift.employee_id = payload.employee_id
+    shift.shift_date = payload.shift_date
+    shift.start_at = payload.start_at
+    shift.end_at = payload.end_at
+    shift.location_name = payload.location_name
+    shift.role_label = payload.role_label
+    db.commit()
+    db.refresh(shift)
+    return shift
+
+
+@app.delete(f"{settings.api_prefix}/shifts/{{shift_id}}", response_model=dict)
+def delete_shift(
+    shift_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    shift = get_shift_for_admin(shift_id, current_user, db)
+    db.delete(shift)
+    db.commit()
+    return {"message": "Shift deleted successfully."}
 
 
 @app.get(f"{settings.api_prefix}/employees/{{employee_id}}/schedule", response_model=list[ShiftRead])
@@ -303,6 +422,36 @@ def list_notes(
         select(ManagerNote).where(ManagerNote.organization_id == organization_id).order_by(ManagerNote.created_at.desc())
     ).all()
     return list(notes)
+
+
+@app.put(f"{settings.api_prefix}/notes/{{note_id}}", response_model=NoteRead)
+def update_note(
+    note_id: int,
+    payload: NoteUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    note = get_note_for_admin(note_id, current_user, db)
+    note.employee_id = payload.employee_id
+    note.title = payload.title
+    note.body = payload.body
+    note.is_active = payload.is_active
+    note.show_at_clock_in = payload.show_at_clock_in
+    db.commit()
+    db.refresh(note)
+    return note
+
+
+@app.delete(f"{settings.api_prefix}/notes/{{note_id}}", response_model=dict)
+def delete_note(
+    note_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    note = get_note_for_admin(note_id, current_user, db)
+    db.delete(note)
+    db.commit()
+    return {"message": "Note deleted successfully."}
 
 
 @app.post(f"{settings.api_prefix}/clock/lookup", response_model=ClockLookupResponse)
@@ -380,6 +529,142 @@ def create_integration(
     db.commit()
     db.refresh(integration)
     return integration
+
+
+@app.post(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/integrations/quickbooks/connect",
+    response_model=QuickBooksActionResponse,
+)
+def connect_quickbooks(
+    organization_id: int,
+    payload: QuickBooksConnectRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    if payload.organization_id != organization_id:
+        raise HTTPException(status_code=400, detail="Organization mismatch.")
+
+    integration = db.scalar(
+        select(IntegrationConnection).where(
+            and_(
+                IntegrationConnection.organization_id == organization_id,
+                IntegrationConnection.provider == IntegrationProvider.QUICKBOOKS,
+            )
+        )
+    )
+    settings_payload = {
+        "realm_id": payload.realm_id or f"realm-{organization_id}",
+        "company_name": payload.company_name or "Demo Diner Books",
+        "oauth_state": "simulated-authorized",
+        "last_export_status": "ready",
+    }
+
+    if integration:
+        integration.status = IntegrationStatus.CONNECTED
+        integration.settings = settings_payload
+        integration.credentials_ref = "quickbooks-demo-token"
+        integration.last_synced_at = datetime.utcnow()
+    else:
+        integration = IntegrationConnection(
+            organization_id=organization_id,
+            provider=IntegrationProvider.QUICKBOOKS,
+            status=IntegrationStatus.CONNECTED,
+            credentials_ref="quickbooks-demo-token",
+            settings=settings_payload,
+            last_synced_at=datetime.utcnow(),
+        )
+        db.add(integration)
+
+    db.commit()
+    db.refresh(integration)
+    return QuickBooksActionResponse(
+        message="QuickBooks connected successfully.",
+        integration=IntegrationConnectionRead.model_validate(integration),
+    )
+
+
+@app.post(f"{settings.api_prefix}/integrations/{{integration_id}}/disconnect", response_model=QuickBooksActionResponse)
+def disconnect_integration(
+    integration_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    integration = get_integration_for_admin(integration_id, current_user, db)
+    integration.status = IntegrationStatus.DISCONNECTED
+    integration.credentials_ref = None
+    integration.settings = {
+        **(integration.settings or {}),
+        "last_export_status": "disconnected",
+    }
+    db.commit()
+    db.refresh(integration)
+    return QuickBooksActionResponse(
+        message=f"{integration.provider.value.title()} disconnected.",
+        integration=IntegrationConnectionRead.model_validate(integration),
+    )
+
+
+@app.post(f"{settings.api_prefix}/integrations/{{integration_id}}/export-labor", response_model=QuickBooksActionResponse)
+def export_integration_labor(
+    integration_id: int,
+    payload: QuickBooksExportRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    integration = get_integration_for_admin(integration_id, current_user, db)
+    if integration.provider != IntegrationProvider.QUICKBOOKS:
+        raise HTTPException(status_code=400, detail="This export is only implemented for QuickBooks.")
+    if integration.status != IntegrationStatus.CONNECTED:
+        raise HTTPException(status_code=400, detail="Connect QuickBooks before exporting labor.")
+    if payload.end_date < payload.start_date:
+        raise HTTPException(status_code=400, detail="end_date must be on or after start_date.")
+
+    start_dt = datetime.combine(payload.start_date, datetime.min.time())
+    end_dt = datetime.combine(payload.end_date, datetime.max.time())
+    entries = db.scalars(
+        select(TimeEntry).where(
+            and_(
+                TimeEntry.organization_id == integration.organization_id,
+                TimeEntry.clock_in_at >= start_dt,
+                TimeEntry.clock_in_at <= end_dt,
+            )
+        )
+    ).all()
+
+    exported_entries = 0
+    exported_hours = 0.0
+    for entry in entries:
+        if entry.clock_out_at:
+            exported_entries += 1
+            exported_hours += (entry.clock_out_at - entry.clock_in_at).total_seconds() / 3600
+
+    integration.last_synced_at = datetime.utcnow()
+    integration.settings = {
+        **(integration.settings or {}),
+        "last_export_status": "completed",
+        "last_export_range": {
+            "start_date": payload.start_date.isoformat(),
+            "end_date": payload.end_date.isoformat(),
+        },
+        "last_export_totals": {
+            "entries": exported_entries,
+            "hours": round(exported_hours, 2),
+        },
+    }
+    db.commit()
+    db.refresh(integration)
+
+    return QuickBooksActionResponse(
+        message="QuickBooks labor export simulated successfully.",
+        integration=IntegrationConnectionRead.model_validate(integration),
+        export_summary={
+            "entries": exported_entries,
+            "hours": round(exported_hours, 2),
+            "start_date": payload.start_date.isoformat(),
+            "end_date": payload.end_date.isoformat(),
+        },
+    )
 
 
 @app.get(f"{settings.api_prefix}/organizations/{{organization_id}}/integrations", response_model=list[IntegrationConnectionRead])
