@@ -163,6 +163,11 @@ class QuickBooksConnectRequest(BaseModel):
     company_name: Optional[str] = None
 
 
+class QuickBooksAuthorizationRead(BaseModel):
+    authorization_url: str
+    state: str
+
+
 class QuickBooksExportRequest(BaseModel):
     start_date: date
     end_date: date

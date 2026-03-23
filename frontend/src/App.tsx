@@ -74,6 +74,11 @@ type QuickBooksActionResponse = {
   };
 };
 
+type QuickBooksAuthorization = {
+  authorization_url: string;
+  state: string;
+};
+
 type AdminTab = "employees" | "schedules" | "notes" | "integrations";
 
 const API_BASE = "http://127.0.0.1:8000/api";
@@ -126,6 +131,7 @@ export default function App() {
   const [adminTab, setAdminTab] = useState<AdminTab>("employees");
   const [setupMessage, setSetupMessage] = useState("Preparing demo workspace...");
   const [exportSummary, setExportSummary] = useState<QuickBooksActionResponse["export_summary"] | null>(null);
+  const [quickBooksAuth, setQuickBooksAuth] = useState<QuickBooksAuthorization | null>(null);
 
   const emptyEmployeeForm = {
     id: null as number | null,
@@ -533,9 +539,24 @@ export default function App() {
           realm_id: quickBooksForm.realm_id,
         }),
       })) as QuickBooksActionResponse;
+      setQuickBooksAuth(null);
       await refreshAdminData(response.message);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "Unable to connect QuickBooks.");
+    }
+  }
+
+  async function handleGenerateQuickBooksAuthUrl() {
+    setAdminError("");
+    try {
+      const response = (await apiFetch(
+        `/organizations/${organizationId}/integrations/quickbooks/authorize-url`,
+        {},
+      )) as QuickBooksAuthorization;
+      setQuickBooksAuth(response);
+      setAdminMessage("QuickBooks authorization URL generated.");
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to generate QuickBooks authorization URL.");
     }
   }
 
@@ -546,6 +567,7 @@ export default function App() {
       const response = (await apiFetch(`/integrations/${integrationId}/disconnect`, {
         method: "POST",
       })) as QuickBooksActionResponse;
+      setQuickBooksAuth(null);
       await refreshAdminData(response.message);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "Unable to disconnect QuickBooks.");
@@ -566,6 +588,18 @@ export default function App() {
       await refreshAdminData(response.message);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "Unable to export labor.");
+    }
+  }
+
+  async function handleRefreshQuickBooks(integrationId: number) {
+    setAdminError("");
+    try {
+      const response = (await apiFetch(`/integrations/${integrationId}/refresh`, {
+        method: "POST",
+      })) as QuickBooksActionResponse;
+      await refreshAdminData(response.message);
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to refresh QuickBooks tokens.");
     }
   }
 
@@ -1012,6 +1046,9 @@ export default function App() {
                       />
                     </div>
                     <div className="action-row">
+                      <button className="ghost-button" type="button" onClick={() => void handleGenerateQuickBooksAuthUrl()}>
+                        Get OAuth URL
+                      </button>
                       <button className="primary-button" type="button" onClick={() => void handleConnectQuickBooks()}>
                         {quickBooksIntegration?.status === "connected" ? "Reconnect" : "Connect"}
                       </button>
@@ -1024,6 +1061,14 @@ export default function App() {
                             onClick={() => void handleExportLabor(quickBooksIntegration.id)}
                           >
                             Export Labor
+                          </button>
+                          <button
+                            className="ghost-button"
+                            type="button"
+                            disabled={quickBooksIntegration.status !== "connected"}
+                            onClick={() => void handleRefreshQuickBooks(quickBooksIntegration.id)}
+                          >
+                            Refresh Tokens
                           </button>
                           <button
                             className="danger-button"
@@ -1044,6 +1089,16 @@ export default function App() {
                         <p>
                           {exportSummary.start_date} to {exportSummary.end_date}
                         </p>
+                      </div>
+                    ) : null}
+                    {quickBooksAuth ? (
+                      <div className="summary-card">
+                        <strong>OAuth URL</strong>
+                        <p>Open this URL in a browser after you set your QuickBooks client credentials.</p>
+                        <a href={quickBooksAuth.authorization_url} target="_blank" rel="noreferrer">
+                          Launch QuickBooks authorization
+                        </a>
+                        <p className="code-line">{quickBooksAuth.authorization_url}</p>
                       </div>
                     ) : null}
                   </form>

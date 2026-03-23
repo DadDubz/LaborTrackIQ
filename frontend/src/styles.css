@@ -396,6 +396,17 @@ textarea {
   margin: 4px 0 0;
 }
 
+.summary-card a {
+  color: #174644;
+  font-weight: 700;
+}
+
+.code-line {
+  word-break: break-all;
+  font-family: "Menlo", "SFMono-Regular", monospace;
+  font-size: 0.84rem;
+}
+
 @media (max-width: 980px) {
   .hero-panel,
   .dashboard-grid {

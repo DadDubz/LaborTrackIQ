@@ -20,6 +20,10 @@ def _b64decode(value: str) -> bytes:
     return urlsafe_b64decode(f"{value}{padding}")
 
 
+def _derive_key(salt: bytes) -> bytes:
+    return hashlib.pbkdf2_hmac("sha256", settings.secret_key.encode("utf-8"), salt, 200_000, dklen=32)
+
+
 def hash_password(password: str) -> str:
     salt = os.urandom(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 200_000)
@@ -62,3 +66,32 @@ def decode_access_token(token: str) -> dict:
     if payload.get("exp", 0) < int(datetime.now(timezone.utc).timestamp()):
         raise HTTPException(status_code=401, detail="Token expired.")
     return payload
+
+
+def seal_secret(value: dict) -> str:
+    payload = json.dumps(value, separators=(",", ":")).encode("utf-8")
+    salt = os.urandom(16)
+    key = _derive_key(salt)
+    ciphertext = bytes(byte ^ key[index % len(key)] for index, byte in enumerate(payload))
+    body = _b64encode(salt + ciphertext)
+    signature = hmac.new(settings.secret_key.encode("utf-8"), body.encode("utf-8"), hashlib.sha256).digest()
+    return f"{body}.{_b64encode(signature)}"
+
+
+def unseal_secret(token: Optional[str]) -> Optional[dict]:
+    if not token:
+        return None
+    try:
+        body, signature = token.split(".", 1)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Stored credential blob is invalid.") from exc
+
+    expected = hmac.new(settings.secret_key.encode("utf-8"), body.encode("utf-8"), hashlib.sha256).digest()
+    if not hmac.compare_digest(_b64encode(expected), signature):
+        raise HTTPException(status_code=400, detail="Stored credential signature is invalid.")
+
+    raw = _b64decode(body)
+    salt, ciphertext = raw[:16], raw[16:]
+    key = _derive_key(salt)
+    plaintext = bytes(byte ^ key[index % len(key)] for index, byte in enumerate(ciphertext))
+    return json.loads(plaintext.decode("utf-8"))

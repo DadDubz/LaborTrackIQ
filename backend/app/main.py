@@ -37,6 +37,7 @@ from app.schemas import (
     NoteUpdate,
     OrganizationCreate,
     QuickBooksActionResponse,
+    QuickBooksAuthorizationRead,
     QuickBooksConnectRequest,
     QuickBooksExportRequest,
     ReportRecipientCreate,
@@ -48,7 +49,14 @@ from app.schemas import (
     UserRead,
     UserUpdate,
 )
-from app.security import create_access_token, decode_access_token, hash_password, verify_password
+from app.security import create_access_token, decode_access_token, hash_password, seal_secret, unseal_secret, verify_password
+from app.services.quickbooks import (
+    build_authorization_url,
+    exchange_code_for_tokens,
+    generate_state_token,
+    refresh_tokens,
+    token_expiry,
+)
 
 
 Base.metadata.create_all(bind=engine)
@@ -584,6 +592,90 @@ def connect_quickbooks(
     )
 
 
+@app.get(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/integrations/quickbooks/authorize-url",
+    response_model=QuickBooksAuthorizationRead,
+)
+def get_quickbooks_authorize_url(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    integration = db.scalar(
+        select(IntegrationConnection).where(
+            and_(
+                IntegrationConnection.organization_id == organization_id,
+                IntegrationConnection.provider == IntegrationProvider.QUICKBOOKS,
+            )
+        )
+    )
+    if not integration:
+        integration = IntegrationConnection(
+            organization_id=organization_id,
+            provider=IntegrationProvider.QUICKBOOKS,
+            status=IntegrationStatus.PENDING,
+            settings={},
+        )
+        db.add(integration)
+        db.flush()
+
+    state = generate_state_token()
+    integration.status = IntegrationStatus.PENDING
+    integration.settings = {
+        **(integration.settings or {}),
+        "oauth_state": state,
+        "oauth_redirect_uri": settings.quickbooks_redirect_uri,
+    }
+    db.commit()
+    return QuickBooksAuthorizationRead(authorization_url=build_authorization_url(state), state=state)
+
+
+@app.get(f"{settings.api_prefix}/integrations/quickbooks/callback", response_model=QuickBooksActionResponse)
+def quickbooks_callback(
+    state: str,
+    code: str,
+    realmId: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    integration = db.scalar(
+        select(IntegrationConnection).where(
+            and_(
+                IntegrationConnection.provider == IntegrationProvider.QUICKBOOKS,
+                IntegrationConnection.status == IntegrationStatus.PENDING,
+            )
+        )
+    )
+    if not integration or (integration.settings or {}).get("oauth_state") != state:
+        raise HTTPException(status_code=400, detail="QuickBooks OAuth state is invalid or expired.")
+
+    tokens = exchange_code_for_tokens(code)
+    integration.status = IntegrationStatus.CONNECTED
+    integration.credentials_ref = seal_secret(
+        {
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens.get("refresh_token"),
+            "expires_at": token_expiry(tokens.get("expires_in", 3600)),
+            "refresh_expires_at": token_expiry(tokens.get("x_refresh_token_expires_in", 86400)),
+        }
+    )
+    integration.last_synced_at = datetime.utcnow()
+    integration.settings = {
+        **(integration.settings or {}),
+        "realm_id": realmId or (integration.settings or {}).get("realm_id"),
+        "company_name": (integration.settings or {}).get("company_name", "QuickBooks Company"),
+        "oauth_state": None,
+        "oauth_redirect_uri": settings.quickbooks_redirect_uri,
+        "last_export_status": (integration.settings or {}).get("last_export_status", "ready"),
+    }
+    db.commit()
+    db.refresh(integration)
+    return QuickBooksActionResponse(
+        message="QuickBooks OAuth callback completed successfully.",
+        integration=IntegrationConnectionRead.model_validate(integration),
+    )
+
+
 @app.post(f"{settings.api_prefix}/integrations/{{integration_id}}/disconnect", response_model=QuickBooksActionResponse)
 def disconnect_integration(
     integration_id: int,
@@ -601,6 +693,44 @@ def disconnect_integration(
     db.refresh(integration)
     return QuickBooksActionResponse(
         message=f"{integration.provider.value.title()} disconnected.",
+        integration=IntegrationConnectionRead.model_validate(integration),
+    )
+
+
+@app.post(f"{settings.api_prefix}/integrations/{{integration_id}}/refresh", response_model=QuickBooksActionResponse)
+def refresh_integration_credentials(
+    integration_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    integration = get_integration_for_admin(integration_id, current_user, db)
+    if integration.provider != IntegrationProvider.QUICKBOOKS:
+        raise HTTPException(status_code=400, detail="This refresh route is only implemented for QuickBooks.")
+
+    tokens = unseal_secret(integration.credentials_ref)
+    if not tokens or not tokens.get("refresh_token"):
+        raise HTTPException(status_code=400, detail="No refresh token is stored for this QuickBooks connection.")
+
+    refreshed = refresh_tokens(tokens["refresh_token"])
+    integration.credentials_ref = seal_secret(
+        {
+            "access_token": refreshed["access_token"],
+            "refresh_token": refreshed.get("refresh_token", tokens["refresh_token"]),
+            "expires_at": token_expiry(refreshed.get("expires_in", 3600)),
+            "refresh_expires_at": token_expiry(refreshed.get("x_refresh_token_expires_in", 86400)),
+        }
+    )
+    integration.status = IntegrationStatus.CONNECTED
+    integration.last_synced_at = datetime.utcnow()
+    integration.settings = {
+        **(integration.settings or {}),
+        "last_export_status": (integration.settings or {}).get("last_export_status", "ready"),
+        "token_refresh_status": "completed",
+    }
+    db.commit()
+    db.refresh(integration)
+    return QuickBooksActionResponse(
+        message="QuickBooks tokens refreshed successfully.",
         integration=IntegrationConnectionRead.model_validate(integration),
     )
 
