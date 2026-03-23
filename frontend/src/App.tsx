@@ -88,7 +88,28 @@ type QuickBooksConfigStatus = {
   scopes: string[];
 };
 
-type AdminTab = "employees" | "schedules" | "notes" | "integrations";
+type SetupOverview = {
+  organization_id: number;
+  organization_name: string;
+  timezone: string;
+  admin_count: number;
+  manager_count: number;
+  employee_count: number;
+  scheduled_shift_count: number;
+  note_count: number;
+  report_recipient_count: number;
+  time_entry_count: number;
+  quickbooks_configured: boolean;
+  quickbooks_connected: boolean;
+  checklist: Array<{
+    key: string;
+    label: string;
+    complete: boolean;
+    detail: string;
+  }>;
+};
+
+type AdminTab = "setup" | "employees" | "schedules" | "notes" | "integrations";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
@@ -142,6 +163,7 @@ export default function App() {
   const [exportSummary, setExportSummary] = useState<QuickBooksActionResponse["export_summary"] | null>(null);
   const [quickBooksAuth, setQuickBooksAuth] = useState<QuickBooksAuthorization | null>(null);
   const [quickBooksConfig, setQuickBooksConfig] = useState<QuickBooksConfigStatus | null>(null);
+  const [setupOverview, setSetupOverview] = useState<SetupOverview | null>(null);
 
   const emptyEmployeeForm = {
     id: null as number | null,
@@ -244,12 +266,13 @@ export default function App() {
 
   async function loadAdminData(accessToken: string, orgId: string) {
     try {
-      const [summaryData, userData, shiftData, noteData, integrationData] = await Promise.all([
+      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData] = await Promise.all([
         apiFetch(`/organizations/${orgId}/dashboard-summary`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/users`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/shifts`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/notes`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/integrations`, {}, accessToken),
+        apiFetch(`/organizations/${orgId}/setup-overview`, {}, accessToken),
       ]);
       const quickBooksConfigData = (await apiFetch(
         `/organizations/${orgId}/integrations/quickbooks/config-status`,
@@ -262,6 +285,7 @@ export default function App() {
       setNotes(noteData as Note[]);
       setIntegrations(integrationData as Integration[]);
       setQuickBooksConfig(quickBooksConfigData);
+      setSetupOverview(setupOverviewData as SetupOverview);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "Unable to load admin data.");
     }
@@ -741,7 +765,7 @@ export default function App() {
                 </button>
               </div>
               <div className="tab-row">
-                {(["employees", "schedules", "notes", "integrations"] as AdminTab[]).map((tab) => (
+                {(["setup", "employees", "schedules", "notes", "integrations"] as AdminTab[]).map((tab) => (
                   <button
                     key={tab}
                     className={adminTab === tab ? "tab active-tab" : "tab"}
@@ -778,6 +802,50 @@ export default function App() {
                   <p>Connected Apps</p>
                 </div>
               </div>
+
+              {adminTab === "setup" && setupOverview ? (
+                <div className="admin-section">
+                  <div className="stack-form">
+                    <h4>Setup Overview</h4>
+                    <div className="summary-card">
+                      <strong>{setupOverview.organization_name}</strong>
+                      <p>Timezone: {setupOverview.timezone}</p>
+                      <p>
+                        {setupOverview.quickbooks_configured
+                          ? "QuickBooks credentials are loaded."
+                          : "QuickBooks credentials still need to be added to .env."}
+                      </p>
+                    </div>
+                    <div className="metric-grid">
+                      <div className="metric">
+                        <span>{setupOverview.employee_count}</span>
+                        <p>Employees</p>
+                      </div>
+                      <div className="metric">
+                        <span>{setupOverview.scheduled_shift_count}</span>
+                        <p>Shifts</p>
+                      </div>
+                      <div className="metric">
+                        <span>{setupOverview.note_count}</span>
+                        <p>Notes</p>
+                      </div>
+                      <div className="metric">
+                        <span>{setupOverview.time_entry_count}</span>
+                        <p>Time Entries</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="scroll-list">
+                    {setupOverview.checklist.map((item) => (
+                      <div className="entity-card" key={item.key}>
+                        <strong>{item.complete ? "Complete" : "Needs Attention"}</strong>
+                        <p>{item.label}</p>
+                        <p>{item.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {adminTab === "employees" ? (
                 <div className="admin-section">

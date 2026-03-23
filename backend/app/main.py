@@ -45,6 +45,8 @@ from app.schemas import (
     ShiftCreate,
     ShiftRead,
     ShiftUpdate,
+    SetupChecklistItem,
+    SetupOverview,
     TimeEntryRead,
     UserCreate,
     UserRead,
@@ -865,6 +867,128 @@ def get_dashboard_summary(
         currently_clocked_in=currently_clocked_in,
         report_recipients=report_recipients,
         connected_integrations=connected_integrations,
+    )
+
+
+@app.get(f"{settings.api_prefix}/organizations/{{organization_id}}/setup-overview", response_model=SetupOverview)
+def get_setup_overview(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    organization = db.get(Organization, organization_id)
+    if not organization:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+
+    admin_count = db.scalar(
+        select(func.count(User.id)).where(
+            and_(User.organization_id == organization_id, User.role == UserRole.ADMIN, User.is_active.is_(True))
+        )
+    ) or 0
+    manager_count = db.scalar(
+        select(func.count(User.id)).where(
+            and_(User.organization_id == organization_id, User.role == UserRole.MANAGER, User.is_active.is_(True))
+        )
+    ) or 0
+    employee_count = db.scalar(
+        select(func.count(User.id)).where(
+            and_(User.organization_id == organization_id, User.role == UserRole.EMPLOYEE, User.is_active.is_(True))
+        )
+    ) or 0
+    scheduled_shift_count = db.scalar(
+        select(func.count(ScheduleShift.id)).where(ScheduleShift.organization_id == organization_id)
+    ) or 0
+    note_count = db.scalar(select(func.count(ManagerNote.id)).where(ManagerNote.organization_id == organization_id)) or 0
+    report_recipient_count = db.scalar(
+        select(func.count(ReportSubscription.id)).where(
+            and_(ReportSubscription.organization_id == organization_id, ReportSubscription.is_active.is_(True))
+        )
+    ) or 0
+    time_entry_count = db.scalar(select(func.count(TimeEntry.id)).where(TimeEntry.organization_id == organization_id)) or 0
+    quickbooks_connected = db.scalar(
+        select(func.count(IntegrationConnection.id)).where(
+            and_(
+                IntegrationConnection.organization_id == organization_id,
+                IntegrationConnection.provider == IntegrationProvider.QUICKBOOKS,
+                IntegrationConnection.status == IntegrationStatus.CONNECTED,
+            )
+        )
+    ) or 0
+
+    checklist = [
+        SetupChecklistItem(
+            key="admin_account",
+            label="Admin account ready",
+            complete=admin_count > 0,
+            detail=f"{admin_count} active admin account(s) found.",
+        ),
+        SetupChecklistItem(
+            key="employees",
+            label="Employees added",
+            complete=employee_count > 0,
+            detail=f"{employee_count} active employee account(s) found.",
+        ),
+        SetupChecklistItem(
+            key="schedules",
+            label="Schedules created",
+            complete=scheduled_shift_count > 0,
+            detail=f"{scheduled_shift_count} scheduled shift(s) found.",
+        ),
+        SetupChecklistItem(
+            key="manager_notes",
+            label="Manager notes configured",
+            complete=note_count > 0,
+            detail=f"{note_count} manager note(s) found.",
+        ),
+        SetupChecklistItem(
+            key="reports",
+            label="Report recipients added",
+            complete=report_recipient_count > 0,
+            detail=f"{report_recipient_count} report recipient(s) found.",
+        ),
+        SetupChecklistItem(
+            key="quickbooks_config",
+            label="QuickBooks credentials loaded",
+            complete=bool(settings.quickbooks_client_id and settings.quickbooks_client_secret),
+            detail=(
+                "Client ID and secret are loaded from environment."
+                if settings.quickbooks_client_id and settings.quickbooks_client_secret
+                else "Add QuickBooks credentials to .env to enable live OAuth."
+            ),
+        ),
+        SetupChecklistItem(
+            key="quickbooks_connection",
+            label="QuickBooks connected",
+            complete=bool(quickbooks_connected),
+            detail=(
+                "QuickBooks is connected and ready for exports."
+                if quickbooks_connected
+                else "Connect QuickBooks from the Integrations tab."
+            ),
+        ),
+        SetupChecklistItem(
+            key="time_clock_usage",
+            label="Time clock activity recorded",
+            complete=time_entry_count > 0,
+            detail=f"{time_entry_count} time entry record(s) found.",
+        ),
+    ]
+
+    return SetupOverview(
+        organization_id=organization_id,
+        organization_name=organization.name,
+        timezone=organization.timezone,
+        admin_count=admin_count,
+        manager_count=manager_count,
+        employee_count=employee_count,
+        scheduled_shift_count=scheduled_shift_count,
+        note_count=note_count,
+        report_recipient_count=report_recipient_count,
+        time_entry_count=time_entry_count,
+        quickbooks_configured=bool(settings.quickbooks_client_id and settings.quickbooks_client_secret),
+        quickbooks_connected=bool(quickbooks_connected),
+        checklist=checklist,
     )
 
 

@@ -222,3 +222,26 @@ class DashboardSummary(BaseModel):
     currently_clocked_in: int
     report_recipients: int
     connected_integrations: int
+
+
+class SetupChecklistItem(BaseModel):
+    key: str
+    label: str
+    complete: bool
+    detail: str
+
+
+class SetupOverview(BaseModel):
+    organization_id: int
+    organization_name: str
+    timezone: str
+    admin_count: int
+    manager_count: int
+    employee_count: int
+    scheduled_shift_count: int
+    note_count: int
+    report_recipient_count: int
+    time_entry_count: int
+    quickbooks_configured: bool
+    quickbooks_connected: bool
+    checklist: list[SetupChecklistItem]
