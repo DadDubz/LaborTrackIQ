@@ -434,11 +434,24 @@ textarea {
   color: #f3f8f6;
 }
 
+.active-tab-button {
+  border: 0;
+  border-radius: 999px;
+  background: #1f514f;
+  color: #f3f8f6;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
 .admin-section {
   display: grid;
   grid-template-columns: 0.95fr 1.05fr;
   gap: 14px;
   margin-top: 16px;
+}
+
+.request-review-section {
+  grid-template-columns: 1.15fr 0.85fr;
 }
 
 .stack-form,
@@ -455,6 +468,11 @@ textarea {
 
 .stack-form h4 {
   margin: 0 0 4px;
+}
+
+.muted-copy {
+  margin: 0;
+  color: #586678;
 }
 
 .stack-form input,
@@ -500,6 +518,59 @@ textarea {
   gap: 10px;
   max-height: 420px;
   overflow: auto;
+}
+
+.request-review-rail {
+  display: grid;
+  gap: 14px;
+}
+
+.request-overview-panel {
+  padding: 18px;
+}
+
+.compact-grid {
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+
+.request-list {
+  max-height: 560px;
+}
+
+.request-card {
+  text-align: left;
+}
+
+.request-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  text-transform: capitalize;
+}
+
+.status-pending {
+  background: rgba(184, 132, 22, 0.14);
+  color: #8b5e1a;
+}
+
+.status-approved {
+  background: rgba(31, 81, 79, 0.14);
+  color: #1f514f;
+}
+
+.status-denied {
+  background: rgba(180, 78, 47, 0.14);
+  color: #8a341d;
 }
 
 .entity-card p {
@@ -556,6 +627,10 @@ textarea {
   }
 
   .admin-section {
+    grid-template-columns: 1fr;
+  }
+
+  .request-review-section {
     grid-template-columns: 1fr;
   }
 }

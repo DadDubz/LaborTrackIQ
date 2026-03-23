@@ -124,8 +124,15 @@ type TimeOffRequest = {
 type AdminTab = "setup" | "employees" | "schedules" | "notes" | "requests" | "integrations";
 type EmployeeTab = "home" | "schedule" | "request_off";
 type KeypadField = "employee" | "pin";
+type RequestQueueTab = "pending" | "approved";
 
 const API_BASE = "http://127.0.0.1:8000/api";
+const SHIFT_TEMPLATES = [
+  { key: "morning", label: "Morning", start: "08:00", end: "14:00", role: "Morning Shift" },
+  { key: "lunch", label: "Lunch", start: "10:00", end: "16:00", role: "Lunch Rush" },
+  { key: "close", label: "Close", start: "16:00", end: "22:00", role: "Closing Shift" },
+  { key: "full", label: "Full Day", start: "09:00", end: "17:00", role: "Full Day Coverage" },
+] as const;
 
 function formatShiftWindow(shift: Shift) {
   const start = new Date(shift.start_at);
@@ -169,6 +176,44 @@ function buildScheduleCalendar(shifts: Shift[]) {
   return Array.from(byDate.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([shiftDate, items]) => ({ shiftDate, items }));
+}
+
+function getWeekStartIso(value = new Date()) {
+  const result = new Date(value);
+  const day = result.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  result.setDate(result.getDate() + diff);
+  result.setHours(0, 0, 0, 0);
+  return result.toISOString().slice(0, 10);
+}
+
+function addDays(dateValue: string, amount: number) {
+  const result = new Date(`${dateValue}T00:00:00`);
+  result.setDate(result.getDate() + amount);
+  return result.toISOString().slice(0, 10);
+}
+
+function formatWeekLabel(weekStart: string) {
+  const start = new Date(`${weekStart}T00:00:00`);
+  const end = new Date(`${addDays(weekStart, 6)}T00:00:00`);
+  return `${start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} - ${end.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  })}`;
+}
+
+function formatScheduleDayLabel(dateValue: string) {
+  return new Date(`${dateValue}T00:00:00`).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function getShiftHours(shift: Shift) {
+  const start = new Date(shift.start_at).getTime();
+  const end = new Date(shift.end_at).getTime();
+  return Math.max(0, end - start) / 36e5;
 }
 
 export default function App() {
@@ -251,6 +296,7 @@ export default function App() {
     status: "pending",
     manager_response: "",
   });
+  const [requestQueueTab, setRequestQueueTab] = useState<RequestQueueTab>("pending");
 
   useEffect(() => {
     const storedToken = window.localStorage.getItem("labortrackiq_token");
@@ -776,6 +822,9 @@ export default function App() {
   const scheduleCalendar = buildScheduleCalendar(employeePortal?.schedule ?? []);
   const employeeOptions = employees.filter((employee) => employee.role === "employee");
   const quickBooksIntegration = integrations.find((integration) => integration.provider === "quickbooks");
+  const pendingTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "pending");
+  const approvedTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "approved");
+  const visibleTimeOffRequests = requestQueueTab === "pending" ? pendingTimeOffRequests : approvedTimeOffRequests;
 
   return (
     <div className="app-shell">
@@ -1308,9 +1357,84 @@ export default function App() {
               ) : null}
 
               {adminTab === "requests" ? (
-                <div className="admin-section">
+                <div className="admin-section request-review-section">
+                  <div className="request-review-rail">
+                    <div className="panel request-overview-panel">
+                      <div className="section-heading">
+                        <div>
+                          <p className="eyebrow">Request Off</p>
+                          <h3>Review Queue</h3>
+                        </div>
+                        <p className="muted-copy">Managers can work through pending requests first, then check approved history.</p>
+                      </div>
+                      <div className="metric-grid compact-grid">
+                        <div className="metric">
+                          <span>{pendingTimeOffRequests.length}</span>
+                          <p>Pending</p>
+                        </div>
+                        <div className="metric">
+                          <span>{approvedTimeOffRequests.length}</span>
+                          <p>Approved</p>
+                        </div>
+                      </div>
+                      <div className="tab-row">
+                        {(["pending", "approved"] as RequestQueueTab[]).map((tab) => (
+                          <button
+                            key={tab}
+                            type="button"
+                            className={tab === requestQueueTab ? "active-tab-button" : "ghost-button"}
+                            onClick={() => setRequestQueueTab(tab)}
+                          >
+                            {tab === "pending" ? `Pending (${pendingTimeOffRequests.length})` : `Approved (${approvedTimeOffRequests.length})`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="scroll-list request-list">
+                      {visibleTimeOffRequests.length > 0 ? (
+                        visibleTimeOffRequests.map((request) => {
+                          const employee = employeeOptions.find((item) => item.id === request.employee_id);
+                          return (
+                            <button
+                              className="entity-card entity-button request-card"
+                              key={request.id}
+                              type="button"
+                              onClick={() =>
+                                setRequestReviewForm({
+                                  id: request.id,
+                                  status: request.status,
+                                  manager_response: request.manager_response ?? "",
+                                })
+                              }
+                            >
+                              <div className="request-card-header">
+                                <strong>{employee?.full_name ?? `Employee ${request.employee_id}`}</strong>
+                                <span className={`status-pill status-${request.status}`}>{request.status}</span>
+                              </div>
+                              <p>
+                                {formatDate(request.start_date)} to {formatDate(request.end_date)}
+                              </p>
+                              <p>{request.reason}</p>
+                              {request.manager_response ? <p>Manager reply: {request.manager_response}</p> : null}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="empty-state">
+                          {requestQueueTab === "pending"
+                            ? "No pending request-off reviews right now."
+                            : "No approved request-off history yet."}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   <form className="stack-form" onSubmit={handleReviewRequest}>
-                    <h4>Review Request</h4>
+                    <h4>{requestReviewForm.id ? "Review Selected Request" : "Select a Request"}</h4>
+                    <p className="muted-copy">
+                      Choose a request from the list, then add an optional manager reply before saving the decision.
+                    </p>
                     <select
                       value={requestReviewForm.status}
                       onChange={(event) => setRequestReviewForm({ ...requestReviewForm, status: event.target.value })}
@@ -1333,37 +1457,6 @@ export default function App() {
                       </button>
                     </div>
                   </form>
-                  <div className="scroll-list">
-                    {orgTimeOffRequests.length > 0 ? (
-                      orgTimeOffRequests.map((request) => {
-                        const employee = employeeOptions.find((item) => item.id === request.employee_id);
-                        return (
-                          <button
-                            className="entity-card entity-button"
-                            key={request.id}
-                            type="button"
-                            onClick={() =>
-                              setRequestReviewForm({
-                                id: request.id,
-                                status: request.status,
-                                manager_response: request.manager_response ?? "",
-                              })
-                            }
-                          >
-                            <strong>{employee?.full_name ?? `Employee ${request.employee_id}`}</strong>
-                            <p>
-                              {formatDate(request.start_date)} to {formatDate(request.end_date)}
-                            </p>
-                            <p>{request.reason}</p>
-                            <p>Status: {request.status}</p>
-                            {request.manager_response ? <p>Manager reply: {request.manager_response}</p> : null}
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <div className="empty-state">No time-off requests have been submitted yet.</div>
-                    )}
-                  </div>
                 </div>
               ) : null}
 
