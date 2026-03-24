@@ -1078,12 +1078,23 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <section className="brand-banner panel">
+        <div>
+          <p className="eyebrow">MiseIQ Brand System</p>
+          <h2>MiseIQ Workforce</h2>
+        </div>
+        <p className="brand-copy">
+          Styled to match your MiseIQ site with a deep navy foundation, warm parchment surfaces, gold accents, and
+          serif-led headings for a more premium hospitality operations feel.
+        </p>
+      </section>
+
       <section className="employee-shell">
         {!employeePortal ? (
           <div className="kiosk-layout">
             <div className="kiosk-copy panel">
-              <p className="eyebrow">Employee Clock</p>
-              <h1 className="kiosk-title">Clock In With the Keypad</h1>
+              <p className="eyebrow">MiseIQ Workforce</p>
+              <h1 className="kiosk-title">Clock In to the Shift Board</h1>
               <p className="hero-text">
                 Employees use the keypad to enter their employee number and PIN. After clock-in, they land on their
                 home screen with notes, current schedule, full calendar, and request-off tools.
@@ -1140,10 +1151,10 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <div className="employee-portal">
-            <div className="employee-portal-header">
-              <div>
-                <p className="eyebrow">Employee Home</p>
+            <div className="employee-portal">
+              <div className="employee-portal-header">
+                <div>
+                <p className="eyebrow">MiseIQ Workforce</p>
                 <h1 className="kiosk-title">{employeePortal.employee_name}</h1>
                 <p className="hero-text">{employeeClockMessage}</p>
               </div>
@@ -1301,8 +1312,8 @@ export default function App() {
       <section className="dashboard-grid">
         <article className="panel admin-panel admin-panel-expanded">
           <div className="panel-heading">
-            <p className="eyebrow">Admin View</p>
-            <h3>Operations Console</h3>
+            <p className="eyebrow">MiseIQ Admin</p>
+            <h3>Workforce Operations Console</h3>
           </div>
 
           {!adminUser ? (

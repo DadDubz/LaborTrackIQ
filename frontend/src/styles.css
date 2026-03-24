@@ -1,9 +1,17 @@
 :root {
+  --miseiq-navy: #11213b;
+  --miseiq-navy-soft: #1d3152;
+  --miseiq-gold: #c49a56;
+  --miseiq-gold-soft: #d6b57a;
+  --miseiq-cream: #fff7e8;
+  --miseiq-paper: #f4efe6;
+  --miseiq-ink: #24334d;
   font-family: "Avenir Next", "Segoe UI", sans-serif;
-  color: #1d2433;
+  color: var(--miseiq-ink);
   background:
-    radial-gradient(circle at top left, rgba(239, 181, 71, 0.35), transparent 28%),
-    linear-gradient(135deg, #f4efe4 0%, #dce8ea 52%, #c9d7cb 100%);
+    radial-gradient(circle at top left, rgba(196, 154, 86, 0.18), transparent 30%),
+    radial-gradient(circle at top right, rgba(17, 33, 59, 0.1), transparent 26%),
+    linear-gradient(180deg, #10203a 0%, #1d3152 34%, #f4efe6 82%);
   line-height: 1.5;
   font-weight: 400;
   color-scheme: light;
@@ -17,6 +25,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: transparent;
 }
 
 button,
@@ -30,6 +39,32 @@ textarea {
   max-width: 1280px;
   margin: 0 auto;
   padding: 32px 20px 48px;
+}
+
+.brand-banner {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 24px;
+  background: rgba(247, 241, 231, 0.82);
+  border: 1px solid rgba(214, 197, 164, 0.7);
+}
+
+.brand-banner h2,
+.kiosk-title,
+.panel h3,
+.section-heading h3,
+.stack-form h4 {
+  font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: -0.03em;
+  color: var(--miseiq-navy);
+}
+
+.brand-copy {
+  max-width: 34rem;
+  margin: 0;
+  color: #4f5b6d;
 }
 
 .employee-shell {
@@ -63,13 +98,13 @@ textarea {
 
 .kiosk-panel {
   background:
-    linear-gradient(180deg, rgba(25, 71, 77, 0.95), rgba(24, 41, 47, 0.94)),
-    #183135;
-  color: #eef7f3;
+    linear-gradient(180deg, rgba(16, 32, 58, 0.96), rgba(29, 49, 82, 0.95)),
+    #11213b;
+  color: var(--miseiq-cream);
 }
 
 .employee-portal {
-  background: rgba(255, 252, 246, 0.82);
+  background: rgba(251, 247, 240, 0.84);
 }
 
 .field-toggle-row {
@@ -89,8 +124,8 @@ textarea {
 }
 
 .active-field-pill {
-  border-color: rgba(243, 187, 83, 0.8);
-  background: rgba(243, 187, 83, 0.16);
+  border-color: rgba(196, 154, 86, 0.8);
+  background: rgba(196, 154, 86, 0.2);
 }
 
 .keypad-grid {
@@ -212,8 +247,8 @@ textarea {
   display: inline-flex;
   padding: 12px 16px;
   border-radius: 999px;
-  background: rgba(139, 94, 26, 0.1);
-  color: #6c4a14;
+  background: rgba(244, 231, 203, 0.95);
+  color: #6f5324;
 }
 
 .clock-card {
@@ -271,8 +306,8 @@ textarea {
 }
 
 .primary-button {
-  background: #f3bb53;
-  color: #1d2433;
+  background: var(--miseiq-gold);
+  color: var(--miseiq-navy);
   font-weight: 700;
 }
 
@@ -285,8 +320,8 @@ textarea {
   margin-top: 18px;
   padding: 16px;
   border-radius: 18px;
-  background: rgba(243, 187, 83, 0.18);
-  color: #fff7e8;
+  background: rgba(196, 154, 86, 0.16);
+  color: var(--miseiq-cream);
 }
 
 .dashboard-grid {
@@ -341,7 +376,7 @@ textarea {
 }
 
 .admin-panel {
-  background: rgba(242, 248, 245, 0.78);
+  background: rgba(251, 247, 240, 0.82);
 }
 
 .metric-grid {
@@ -391,8 +426,8 @@ textarea {
   margin-bottom: 12px;
   padding: 12px 14px;
   border-radius: 16px;
-  background: rgba(31, 81, 79, 0.12);
-  color: #174644;
+  background: rgba(196, 154, 86, 0.18);
+  color: #6f5324;
 }
 
 .admin-toolbar {
@@ -430,15 +465,15 @@ textarea {
 }
 
 .active-tab {
-  background: #1f514f;
-  color: #f3f8f6;
+  background: var(--miseiq-navy);
+  color: var(--miseiq-cream);
 }
 
 .active-tab-button {
   border: 0;
   border-radius: 999px;
-  background: #1f514f;
-  color: #f3f8f6;
+  background: var(--miseiq-navy);
+  color: var(--miseiq-cream);
   padding: 10px 14px;
   cursor: pointer;
 }
@@ -738,8 +773,8 @@ textarea {
 .summary-card {
   border-radius: 16px;
   padding: 14px;
-  background: rgba(31, 81, 79, 0.12);
-  color: #174644;
+  background: rgba(17, 33, 59, 0.08);
+  color: var(--miseiq-navy);
 }
 
 .summary-card p {
@@ -787,7 +822,8 @@ textarea {
   }
 
   .section-heading,
-  .schedule-toolbar {
+  .schedule-toolbar,
+  .brand-banner {
     flex-direction: column;
   }
 
