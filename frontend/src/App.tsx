@@ -274,6 +274,7 @@ export default function App() {
     role_label: "",
   };
   const [shiftForm, setShiftForm] = useState(emptyShiftForm);
+  const [scheduleWeekStart, setScheduleWeekStart] = useState(getWeekStartIso());
 
   const emptyNoteForm = {
     id: null as number | null,
@@ -412,6 +413,47 @@ export default function App() {
 
   function resetShiftForm() {
     setShiftForm(emptyShiftForm);
+  }
+
+  function loadShiftIntoForm(shift: Shift) {
+    const parts = splitIsoDateTime(shift.start_at);
+    const endParts = splitIsoDateTime(shift.end_at);
+    setShiftForm({
+      id: shift.id,
+      employee_id: String(shift.employee_id),
+      shift_date: shift.shift_date,
+      start_time: parts.time,
+      end_time: endParts.time,
+      location_name: shift.location_name ?? "",
+      role_label: shift.role_label ?? "",
+    });
+  }
+
+  function applyShiftTemplate(templateKey: (typeof SHIFT_TEMPLATES)[number]["key"]) {
+    const template = SHIFT_TEMPLATES.find((item) => item.key === templateKey);
+    if (!template) {
+      return;
+    }
+    setShiftForm((current) => ({
+      ...current,
+      shift_date: current.shift_date || scheduleWeekStart,
+      start_time: template.start,
+      end_time: template.end,
+      role_label: current.role_label || template.role,
+    }));
+  }
+
+  function prepareShiftForDate(dateValue: string) {
+    setShiftForm((current) => ({
+      ...current,
+      id: null,
+      shift_date: dateValue,
+      role_label: current.role_label || "Scheduled Shift",
+    }));
+  }
+
+  function moveScheduleWeek(direction: number) {
+    setScheduleWeekStart((current) => addDays(current, direction * 7));
   }
 
   function resetNoteForm() {
@@ -669,6 +711,47 @@ export default function App() {
     }
   }
 
+  async function handleCopyPreviousWeek() {
+    const selectedWeekShifts = shifts.filter(
+      (shift) => shift.shift_date >= scheduleWeekStart && shift.shift_date <= addDays(scheduleWeekStart, 6),
+    );
+    if (selectedWeekShifts.length > 0) {
+      setAdminError("This week already has shifts. Clear or edit the existing shifts before copying another week.");
+      return;
+    }
+
+    const previousWeekStart = addDays(scheduleWeekStart, -7);
+    const previousWeekShifts = shifts.filter(
+      (shift) => shift.shift_date >= previousWeekStart && shift.shift_date <= addDays(previousWeekStart, 6),
+    );
+    if (previousWeekShifts.length === 0) {
+      setAdminError("No shifts were found in the previous week to copy.");
+      return;
+    }
+
+    setAdminError("");
+    for (const shift of previousWeekShifts) {
+      const daysFromPreviousWeek =
+        Math.round(
+          (new Date(`${shift.shift_date}T00:00:00`).getTime() - new Date(`${previousWeekStart}T00:00:00`).getTime()) / 86400000,
+        ) || 0;
+      await apiFetch("/shifts", {
+        method: "POST",
+        body: JSON.stringify({
+          organization_id: Number(organizationId),
+          employee_id: shift.employee_id,
+          shift_date: addDays(scheduleWeekStart, daysFromPreviousWeek),
+          start_at: toIsoDateTime(addDays(scheduleWeekStart, daysFromPreviousWeek), splitIsoDateTime(shift.start_at).time),
+          end_at: toIsoDateTime(addDays(scheduleWeekStart, daysFromPreviousWeek), splitIsoDateTime(shift.end_at).time),
+          location_name: shift.location_name,
+          role_label: shift.role_label,
+        }),
+      });
+    }
+
+    await refreshAdminData("Previous week copied into the current planner.");
+  }
+
   async function handleSubmitNote(event: FormEvent) {
     event.preventDefault();
     setAdminError("");
@@ -822,6 +905,26 @@ export default function App() {
   const scheduleCalendar = buildScheduleCalendar(employeePortal?.schedule ?? []);
   const employeeOptions = employees.filter((employee) => employee.role === "employee");
   const quickBooksIntegration = integrations.find((integration) => integration.provider === "quickbooks");
+  const scheduleWeekDays = Array.from({ length: 7 }, (_, index) => addDays(scheduleWeekStart, index));
+  const scheduleWeekEnd = scheduleWeekDays[scheduleWeekDays.length - 1];
+  const weeklyShifts = shifts
+    .filter((shift) => shift.shift_date >= scheduleWeekStart && shift.shift_date <= scheduleWeekEnd)
+    .sort((a, b) => a.start_at.localeCompare(b.start_at));
+  const weekSchedule = scheduleWeekDays.map((dateValue) => ({
+    dateValue,
+    label: formatScheduleDayLabel(dateValue),
+    shifts: weeklyShifts.filter((shift) => shift.shift_date === dateValue),
+    requests: orgTimeOffRequests.filter(
+      (request) =>
+        request.status !== "denied" && request.start_date <= dateValue && request.end_date >= dateValue,
+    ),
+  }));
+  const scheduledEmployeeCount = new Set(weeklyShifts.map((shift) => shift.employee_id)).size;
+  const weeklyHours = weeklyShifts.reduce((total, shift) => total + getShiftHours(shift), 0);
+  const weeklyPendingRequests = orgTimeOffRequests.filter(
+    (request) =>
+      request.status === "pending" && request.start_date <= scheduleWeekEnd && request.end_date >= scheduleWeekStart,
+  );
   const pendingTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "pending");
   const approvedTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "approved");
   const visibleTimeOffRequests = requestQueueTab === "pending" ? pendingTimeOffRequests : approvedTimeOffRequests;
@@ -1220,9 +1323,119 @@ export default function App() {
               ) : null}
 
               {adminTab === "schedules" ? (
-                <div className="admin-section">
-                  <form className="stack-form" onSubmit={handleSubmitShift}>
-                    <h4>{shiftForm.id ? "Edit Shift" : "Add Shift"}</h4>
+                <div className="admin-section schedule-builder-section">
+                  <div className="schedule-planner panel">
+                    <div className="section-heading">
+                      <div>
+                        <p className="eyebrow">Schedule Builder</p>
+                        <h3>Weekly Planner</h3>
+                      </div>
+                      <p className="muted-copy">Build a week in one place, then use templates and copy-forward to speed up the routine.</p>
+                    </div>
+
+                    <div className="schedule-toolbar">
+                      <div className="schedule-week-controls">
+                        <button className="ghost-button" type="button" onClick={() => moveScheduleWeek(-1)}>
+                          Previous Week
+                        </button>
+                        <button className="ghost-button" type="button" onClick={() => setScheduleWeekStart(getWeekStartIso())}>
+                          This Week
+                        </button>
+                        <button className="ghost-button" type="button" onClick={() => moveScheduleWeek(1)}>
+                          Next Week
+                        </button>
+                      </div>
+                      <div className="schedule-week-meta">
+                        <strong>{formatWeekLabel(scheduleWeekStart)}</strong>
+                        <input type="date" value={scheduleWeekStart} onChange={(event) => setScheduleWeekStart(event.target.value)} />
+                      </div>
+                    </div>
+
+                    <div className="metric-grid">
+                      <div className="metric">
+                        <span>{weeklyShifts.length}</span>
+                        <p>Shifts This Week</p>
+                      </div>
+                      <div className="metric">
+                        <span>{scheduledEmployeeCount}</span>
+                        <p>Scheduled Employees</p>
+                      </div>
+                      <div className="metric">
+                        <span>{weeklyHours.toFixed(1)}</span>
+                        <p>Hours Planned</p>
+                      </div>
+                      <div className="metric">
+                        <span>{weeklyPendingRequests.length}</span>
+                        <p>Pending Requests</p>
+                      </div>
+                    </div>
+
+                    <div className="action-row">
+                      <button className="primary-button" type="button" onClick={() => void handleCopyPreviousWeek()}>
+                        Copy Previous Week
+                      </button>
+                      <button className="ghost-button" type="button" onClick={() => prepareShiftForDate(scheduleWeekStart)}>
+                        Add Shift to Monday
+                      </button>
+                    </div>
+
+                    <div className="week-grid">
+                      {weekSchedule.map((day) => (
+                        <div className="week-day-card" key={day.dateValue}>
+                          <div className="week-day-header">
+                            <div>
+                              <strong>{day.label}</strong>
+                              <p>{day.shifts.length} shift(s)</p>
+                            </div>
+                            <button className="ghost-button" type="button" onClick={() => prepareShiftForDate(day.dateValue)}>
+                              Add Shift
+                            </button>
+                          </div>
+
+                          {day.requests.length > 0 ? (
+                            <div className="day-request-list">
+                              {day.requests.map((request) => {
+                                const employee = employeeOptions.find((item) => item.id === request.employee_id);
+                                return (
+                                  <div className="mini-request" key={request.id}>
+                                    <strong>{employee?.full_name ?? `Employee ${request.employee_id}`}</strong>
+                                    <span className={`status-pill status-${request.status}`}>{request.status}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+
+                          <div className="day-shift-list">
+                            {day.shifts.length > 0 ? (
+                              day.shifts.map((shift) => {
+                                const window = formatShiftWindow(shift);
+                                const employee = employeeOptions.find((item) => item.id === shift.employee_id);
+                                return (
+                                  <button
+                                    className="entity-card entity-button shift-tile"
+                                    key={shift.id}
+                                    type="button"
+                                    onClick={() => loadShiftIntoForm(shift)}
+                                  >
+                                    <strong>{employee?.full_name ?? `Employee ${shift.employee_id}`}</strong>
+                                    <p>{window.time}</p>
+                                    <p>{shift.role_label ?? shift.location_name ?? "Scheduled shift"}</p>
+                                  </button>
+                                );
+                              })
+                            ) : (
+                              <div className="empty-state">No shifts scheduled yet.</div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <form className="stack-form schedule-form" onSubmit={handleSubmitShift}>
+                    <h4>{shiftForm.id ? "Edit Shift" : "Quick Add Shift"}</h4>
+                    <p className="muted-copy">Choose an employee, tap a template, then save. You can also load a shift directly from the week view to edit it.</p>
                     <select value={shiftForm.employee_id} onChange={(event) => setShiftForm({ ...shiftForm, employee_id: event.target.value })}>
                       <option value="">Select employee</option>
                       {employeeOptions.map((employee) => (
@@ -1232,6 +1445,18 @@ export default function App() {
                       ))}
                     </select>
                     <input type="date" value={shiftForm.shift_date} onChange={(event) => setShiftForm({ ...shiftForm, shift_date: event.target.value })} />
+                    <div className="template-chip-row">
+                      {SHIFT_TEMPLATES.map((template) => (
+                        <button
+                          key={template.key}
+                          className="ghost-button"
+                          type="button"
+                          onClick={() => applyShiftTemplate(template.key)}
+                        >
+                          {template.label}
+                        </button>
+                      ))}
+                    </div>
                     <div className="split-row">
                       <input type="time" value={shiftForm.start_time} onChange={(event) => setShiftForm({ ...shiftForm, start_time: event.target.value })} />
                       <input type="time" value={shiftForm.end_time} onChange={(event) => setShiftForm({ ...shiftForm, end_time: event.target.value })} />
@@ -1251,38 +1476,37 @@ export default function App() {
                         </button>
                       ) : null}
                     </div>
+                    {weeklyPendingRequests.length > 0 ? (
+                      <div className="schedule-sidebar-list">
+                        <strong>Pending Time-Off Requests This Week</strong>
+                        {weeklyPendingRequests.map((request) => {
+                          const employee = employeeOptions.find((item) => item.id === request.employee_id);
+                          return (
+                            <button
+                              className="entity-card entity-button"
+                              key={request.id}
+                              type="button"
+                              onClick={() => {
+                                setAdminTab("requests");
+                                setRequestQueueTab("pending");
+                                setRequestReviewForm({
+                                  id: request.id,
+                                  status: request.status,
+                                  manager_response: request.manager_response ?? "",
+                                });
+                              }}
+                            >
+                              <strong>{employee?.full_name ?? `Employee ${request.employee_id}`}</strong>
+                              <p>
+                                {formatDate(request.start_date)} to {formatDate(request.end_date)}
+                              </p>
+                              <p>{request.reason}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </form>
-                  <div className="scroll-list">
-                    {shifts.map((shift) => {
-                      const window = formatShiftWindow(shift);
-                      const employee = employeeOptions.find((item) => item.id === shift.employee_id);
-                      return (
-                        <button
-                          className="entity-card entity-button"
-                          key={shift.id}
-                          type="button"
-                          onClick={() => {
-                            const parts = splitIsoDateTime(shift.start_at);
-                            const endParts = splitIsoDateTime(shift.end_at);
-                            setShiftForm({
-                              id: shift.id,
-                              employee_id: String(shift.employee_id),
-                              shift_date: shift.shift_date,
-                              start_time: parts.time,
-                              end_time: endParts.time,
-                              location_name: shift.location_name ?? "",
-                              role_label: shift.role_label ?? "",
-                            });
-                          }}
-                        >
-                          <strong>{employee?.full_name ?? `Employee ${shift.employee_id}`}</strong>
-                          <p>{window.day}</p>
-                          <p>{window.time}</p>
-                          <p>{shift.role_label ?? shift.location_name ?? "Scheduled shift"}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
                 </div>
               ) : null}
 
