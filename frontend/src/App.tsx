@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { DragEvent, FormEvent, useEffect, useState } from "react";
 
 type Shift = {
   id: number;
@@ -298,6 +298,8 @@ export default function App() {
     manager_response: "",
   });
   const [requestQueueTab, setRequestQueueTab] = useState<RequestQueueTab>("pending");
+  const [draggingShiftId, setDraggingShiftId] = useState<number | null>(null);
+  const [dragTargetDate, setDragTargetDate] = useState<string | null>(null);
 
   useEffect(() => {
     const storedToken = window.localStorage.getItem("labortrackiq_token");
@@ -750,6 +752,65 @@ export default function App() {
     }
 
     await refreshAdminData("Previous week copied into the current planner.");
+  }
+
+  async function handleMoveShiftToDate(shiftId: number, targetDate: string) {
+    const shift = shifts.find((item) => item.id === shiftId);
+    if (!shift || shift.shift_date === targetDate) {
+      return;
+    }
+
+    setAdminError("");
+    try {
+      const startParts = splitIsoDateTime(shift.start_at);
+      const endParts = splitIsoDateTime(shift.end_at);
+      await apiFetch(`/shifts/${shift.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          employee_id: shift.employee_id,
+          shift_date: targetDate,
+          start_at: toIsoDateTime(targetDate, startParts.time),
+          end_at: toIsoDateTime(targetDate, endParts.time),
+          location_name: shift.location_name,
+          role_label: shift.role_label,
+        }),
+      });
+      await refreshAdminData("Shift moved on the weekly planner.");
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to move shift.");
+    } finally {
+      setDraggingShiftId(null);
+      setDragTargetDate(null);
+    }
+  }
+
+  function handleShiftDragStart(event: DragEvent<HTMLButtonElement>, shiftId: number) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(shiftId));
+    setDraggingShiftId(shiftId);
+  }
+
+  function handleShiftDragEnd() {
+    setDraggingShiftId(null);
+    setDragTargetDate(null);
+  }
+
+  function handleDayDragOver(event: DragEvent<HTMLDivElement>, targetDate: string) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragTargetDate(targetDate);
+  }
+
+  async function handleDayDrop(event: DragEvent<HTMLDivElement>, targetDate: string) {
+    event.preventDefault();
+    const rawShiftId = event.dataTransfer.getData("text/plain");
+    const shiftId = Number(rawShiftId);
+    if (Number.isFinite(shiftId) && shiftId > 0) {
+      await handleMoveShiftToDate(shiftId, targetDate);
+    } else {
+      setDraggingShiftId(null);
+      setDragTargetDate(null);
+    }
   }
 
   async function handleSubmitNote(event: FormEvent) {
@@ -1381,7 +1442,12 @@ export default function App() {
 
                     <div className="week-grid">
                       {weekSchedule.map((day) => (
-                        <div className="week-day-card" key={day.dateValue}>
+                        <div
+                          className={`week-day-card${dragTargetDate === day.dateValue ? " day-drop-target" : ""}`}
+                          key={day.dateValue}
+                          onDragOver={(event) => handleDayDragOver(event, day.dateValue)}
+                          onDrop={(event) => void handleDayDrop(event, day.dateValue)}
+                        >
                           <div className="week-day-header">
                             <div>
                               <strong>{day.label}</strong>
@@ -1413,9 +1479,14 @@ export default function App() {
                                 const employee = employeeOptions.find((item) => item.id === shift.employee_id);
                                 return (
                                   <button
-                                    className="entity-card entity-button shift-tile"
+                                    className={`entity-card entity-button shift-tile${
+                                      draggingShiftId === shift.id ? " dragging-shift" : ""
+                                    }`}
                                     key={shift.id}
                                     type="button"
+                                    draggable
+                                    onDragStart={(event) => handleShiftDragStart(event, shift.id)}
+                                    onDragEnd={handleShiftDragEnd}
                                     onClick={() => loadShiftIntoForm(shift)}
                                   >
                                     <strong>{employee?.full_name ?? `Employee ${shift.employee_id}`}</strong>
@@ -1463,6 +1534,12 @@ export default function App() {
                     </div>
                     <input placeholder="Location" value={shiftForm.location_name} onChange={(event) => setShiftForm({ ...shiftForm, location_name: event.target.value })} />
                     <input placeholder="Role label" value={shiftForm.role_label} onChange={(event) => setShiftForm({ ...shiftForm, role_label: event.target.value })} />
+                    {shiftForm.id ? (
+                      <div className="quick-reassign-panel">
+                        <strong>Quick Reassign</strong>
+                        <p className="muted-copy">Switch the employee here and save to hand the shift to someone else.</p>
+                      </div>
+                    ) : null}
                     <div className="action-row">
                       <button className="primary-button" type="submit">
                         {shiftForm.id ? "Save Shift" : "Create Shift"}
