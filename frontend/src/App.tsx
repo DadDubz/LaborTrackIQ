@@ -1105,6 +1105,13 @@ export default function App() {
                 Employees use the keypad to enter their employee number and PIN. After clock-in, they land on their
                 home screen with notes, current schedule, full calendar, and request-off tools.
               </p>
+              <div className="brand-illustration-card">
+                <img className="brand-illustration" src="/miseiq-ops-illustration.svg" alt="MiseIQ operations illustration" />
+                <div className="brand-illustration-copy">
+                  <strong>Shift intelligence, branded for MiseIQ</strong>
+                  <p>Labor visibility, schedules, request management, and clock activity in the same premium operating system feel.</p>
+                </div>
+              </div>
               <div className="status-strip">{setupMessage}</div>
             </div>
 
@@ -1323,19 +1330,29 @@ export default function App() {
           </div>
 
           {!adminUser ? (
-            <form className="admin-form" onSubmit={handleAdminLogin}>
-              <label>
-                Admin Email
-                <input value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} />
-              </label>
-              <label>
-                Password
-                <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} />
-              </label>
-              <button className="primary-button" type="submit">
-                Admin Login
-              </button>
-            </form>
+            <div className="admin-login-shell">
+              <form className="admin-form" onSubmit={handleAdminLogin}>
+                <label>
+                  Admin Email
+                  <input value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} />
+                </label>
+                <label>
+                  Password
+                  <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} />
+                </label>
+                <button className="primary-button" type="submit">
+                  Admin Login
+                </button>
+              </form>
+              <aside className="admin-brand-panel">
+                <img className="admin-brand-illustration" src="/miseiq-ops-illustration.svg" alt="MiseIQ operations illustration" />
+                <p className="eyebrow">MiseIQ Control Layer</p>
+                <h4>Owner-grade workforce visibility</h4>
+                <p className="muted-copy">
+                  Review labor planning, request queues, clock activity, and publishing workflows in a dashboard that matches the rest of your MiseIQ brand.
+                </p>
+              </aside>
+            </div>
           ) : (
             <>
               <div className="admin-toolbar">

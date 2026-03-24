@@ -1,0 +1,34 @@
+<svg width="420" height="280" viewBox="0 0 420 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gearGradient" x1="118" y1="170" x2="257" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#54E0DF" />
+      <stop offset="1" stop-color="#0FAFCE" />
+    </linearGradient>
+    <linearGradient id="shadowGradient" x1="90" y1="236" x2="320" y2="236" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#11213B" stop-opacity="0" />
+      <stop offset="0.5" stop-color="#11213B" stop-opacity="0.18" />
+      <stop offset="1" stop-color="#11213B" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <ellipse cx="205" cy="238" rx="115" ry="16" fill="url(#shadowGradient)" />
+  <path d="M117 194C103 151 111 110 141 81C165 57 204 48 241 59C268 67 291 86 305 111" stroke="#11213B" stroke-width="28" stroke-linecap="round" />
+  <path d="M119 194C141 186 164 187 183 199C200 210 209 227 210 246" stroke="#11213B" stroke-width="24" stroke-linecap="round" />
+  <path d="M302 109C328 118 347 140 356 167" stroke="#11213B" stroke-width="24" stroke-linecap="round" />
+  <path d="M160 86L136 51" stroke="#11213B" stroke-width="18" stroke-linecap="round" />
+  <path d="M122 89C114 75 102 66 87 63" stroke="#11213B" stroke-width="16" stroke-linecap="round" />
+  <path d="M227 87L240 57" stroke="#11213B" stroke-width="18" stroke-linecap="round" />
+  <path
+    d="M211.534 92.66C218.347 85.78 229.653 85.78 236.466 92.66L245.853 102.14L259.294 100.413C268.894 99.1815 277.843 106.132 278.985 115.767L280.585 129.275L291.693 136.955C299.603 142.422 301.805 153.379 296.58 161.451L289.242 172.787L291.693 185.872C293.436 195.18 287.598 204.251 278.432 206.619L265.55 209.946L259.294 221.467C254.845 229.657 244.344 232.184 236.698 227.315L224 219.226L211.302 227.315C203.656 232.184 193.155 229.657 188.706 221.467L182.45 209.946L169.568 206.619C160.402 204.251 154.564 195.18 156.307 185.872L158.758 172.787L151.42 161.451C146.195 153.379 148.397 142.422 156.307 136.955L167.415 129.275L169.015 115.767C170.157 106.132 179.106 99.1815 188.706 100.413L202.147 102.14L211.534 92.66Z"
+    fill="url(#gearGradient)"
+  />
+  <circle cx="224" cy="154" r="28" fill="#11213B" fill-opacity="0.16" />
+  <circle cx="224" cy="154" r="11" fill="#11213B" />
+  <path d="M224 115V127" stroke="#11213B" stroke-width="10" stroke-linecap="round" />
+  <path d="M224 181V193" stroke="#11213B" stroke-width="10" stroke-linecap="round" />
+  <path d="M185 154H197" stroke="#11213B" stroke-width="10" stroke-linecap="round" />
+  <path d="M251 154H263" stroke="#11213B" stroke-width="10" stroke-linecap="round" />
+  <path d="M196 126L204 134" stroke="#11213B" stroke-width="10" stroke-linecap="round" />
+  <path d="M244 174L252 182" stroke="#11213B" stroke-width="10" stroke-linecap="round" />
+  <path d="M196 182L204 174" stroke="#11213B" stroke-width="10" stroke-linecap="round" />
+  <path d="M244 134L252 126" stroke="#11213B" stroke-width="10" stroke-linecap="round" />
+</svg>

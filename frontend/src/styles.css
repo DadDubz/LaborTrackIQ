@@ -88,6 +88,36 @@ textarea {
   color: #4f5b6d;
 }
 
+.brand-illustration-card,
+.admin-brand-panel {
+  border-radius: 24px;
+  border: 1px solid rgba(214, 197, 164, 0.6);
+  background: linear-gradient(135deg, rgba(17, 33, 59, 0.98), rgba(29, 49, 82, 0.94));
+  color: var(--miseiq-cream);
+}
+
+.brand-illustration-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 18px;
+}
+
+.brand-illustration {
+  width: 100%;
+  max-width: 280px;
+}
+
+.brand-illustration-copy strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.brand-illustration-copy p {
+  margin: 0;
+  color: rgba(255, 247, 232, 0.78);
+}
+
 .employee-shell {
   margin-bottom: 24px;
 }
@@ -417,6 +447,29 @@ textarea {
   display: grid;
   gap: 12px;
   margin-bottom: 14px;
+}
+
+.admin-login-shell {
+  display: grid;
+  grid-template-columns: 0.78fr 1.22fr;
+  gap: 16px;
+}
+
+.admin-brand-panel {
+  padding: 20px;
+}
+
+.admin-brand-illustration {
+  width: 100%;
+  max-width: 300px;
+  margin-bottom: 8px;
+}
+
+.admin-brand-panel h4 {
+  margin: 0 0 8px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.7rem;
+  letter-spacing: -0.03em;
 }
 
 .admin-form label {
@@ -839,6 +892,10 @@ textarea {
 
   .schedule-builder-section,
   .week-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-login-shell {
     grid-template-columns: 1fr;
   }
 
