@@ -216,6 +216,10 @@ function getShiftHours(shift: Shift) {
   return Math.max(0, end - start) / 36e5;
 }
 
+function rangesOverlap(startA: string, endA: string, startB: string, endB: string) {
+  return new Date(startA).getTime() < new Date(endB).getTime() && new Date(startB).getTime() < new Date(endA).getTime();
+}
+
 export default function App() {
   const [organizationId, setOrganizationId] = useState("1");
   const [employeeNumber, setEmployeeNumber] = useState("1001");
@@ -986,6 +990,88 @@ export default function App() {
     (request) =>
       request.status === "pending" && request.start_date <= scheduleWeekEnd && request.end_date >= scheduleWeekStart,
   );
+  const approvedWeekRequests = orgTimeOffRequests.filter(
+    (request) =>
+      request.status === "approved" && request.start_date <= scheduleWeekEnd && request.end_date >= scheduleWeekStart,
+  );
+  const scheduleConflictSummaries = weekSchedule
+    .map((day) => {
+      const overlaps: string[] = [];
+      for (let index = 0; index < day.shifts.length; index += 1) {
+        const currentShift = day.shifts[index];
+        const currentEmployee = employeeOptions.find((item) => item.id === currentShift.employee_id);
+        for (let compareIndex = index + 1; compareIndex < day.shifts.length; compareIndex += 1) {
+          const compareShift = day.shifts[compareIndex];
+          if (currentShift.employee_id !== compareShift.employee_id) {
+            continue;
+          }
+          if (rangesOverlap(currentShift.start_at, currentShift.end_at, compareShift.start_at, compareShift.end_at)) {
+            overlaps.push(`${currentEmployee?.full_name ?? `Employee ${currentShift.employee_id}`} has overlapping shifts.`);
+          }
+        }
+      }
+
+      const approvedConflicts = day.shifts.flatMap((shift) => {
+        const employee = employeeOptions.find((item) => item.id === shift.employee_id);
+        return approvedWeekRequests
+          .filter(
+            (request) =>
+              request.employee_id === shift.employee_id && request.start_date <= day.dateValue && request.end_date >= day.dateValue,
+          )
+          .map(() => `${employee?.full_name ?? `Employee ${shift.employee_id}`} is scheduled during approved time off.`);
+      });
+
+      const longShiftFlags = day.shifts
+        .filter((shift) => getShiftHours(shift) > 10)
+        .map((shift) => {
+          const employee = employeeOptions.find((item) => item.id === shift.employee_id);
+          return `${employee?.full_name ?? `Employee ${shift.employee_id}`} has a shift longer than 10 hours.`;
+        });
+
+      return {
+        dateValue: day.dateValue,
+        issues: [...new Set([...overlaps, ...approvedConflicts, ...longShiftFlags])],
+      };
+    })
+    .filter((day) => day.issues.length > 0);
+  const weeklyEmployeeHours = employeeOptions
+    .map((employee) => ({
+      employee,
+      hours: weeklyShifts.filter((shift) => shift.employee_id === employee.id).reduce((total, shift) => total + getShiftHours(shift), 0),
+    }))
+    .filter((entry) => entry.hours > 0);
+  const overtimeWarnings = weeklyEmployeeHours.filter((entry) => entry.hours > 40);
+  const formShiftStart = shiftForm.shift_date ? toIsoDateTime(shiftForm.shift_date, shiftForm.start_time) : "";
+  const formShiftEnd = shiftForm.shift_date ? toIsoDateTime(shiftForm.shift_date, shiftForm.end_time) : "";
+  const shiftFormWarnings = shiftForm.employee_id && shiftForm.shift_date
+    ? [
+        ...shifts
+          .filter(
+            (shift) =>
+              shift.employee_id === Number(shiftForm.employee_id) &&
+              shift.id !== shiftForm.id &&
+              shift.shift_date === shiftForm.shift_date &&
+              formShiftStart &&
+              formShiftEnd &&
+              rangesOverlap(shift.start_at, shift.end_at, formShiftStart, formShiftEnd),
+          )
+          .map(() => "This employee already has another shift that overlaps this time."),
+        ...approvedWeekRequests
+          .filter(
+            (request) =>
+              request.employee_id === Number(shiftForm.employee_id) &&
+              request.start_date <= shiftForm.shift_date &&
+              request.end_date >= shiftForm.shift_date,
+          )
+          .map(() => "This employee has approved time off on the selected date."),
+        ...(shiftForm.shift_date && formShiftStart && formShiftEnd && new Date(formShiftEnd).getTime() <= new Date(formShiftStart).getTime()
+          ? ["Shift end time must be after the start time."]
+          : []),
+        ...(shiftForm.shift_date && formShiftStart && formShiftEnd && (new Date(formShiftEnd).getTime() - new Date(formShiftStart).getTime()) / 36e5 > 10
+          ? ["This shift is longer than 10 hours."]
+          : []),
+      ]
+    : [];
   const pendingTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "pending");
   const approvedTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "approved");
   const visibleTimeOffRequests = requestQueueTab === "pending" ? pendingTimeOffRequests : approvedTimeOffRequests;
@@ -1431,6 +1517,25 @@ export default function App() {
                       </div>
                     </div>
 
+                    {scheduleConflictSummaries.length > 0 || overtimeWarnings.length > 0 ? (
+                      <div className="planner-alerts">
+                        {scheduleConflictSummaries.map((day) => (
+                          <div className="planner-alert-card" key={day.dateValue}>
+                            <strong>{formatScheduleDayLabel(day.dateValue)}</strong>
+                            {day.issues.map((issue) => (
+                              <p key={issue}>{issue}</p>
+                            ))}
+                          </div>
+                        ))}
+                        {overtimeWarnings.map((warning) => (
+                          <div className="planner-alert-card" key={warning.employee.id}>
+                            <strong>{warning.employee.full_name}</strong>
+                            <p>{warning.hours.toFixed(1)} scheduled hours this week may trigger overtime.</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
                     <div className="action-row">
                       <button className="primary-button" type="button" onClick={() => void handleCopyPreviousWeek()}>
                         Copy Previous Week
@@ -1473,6 +1578,9 @@ export default function App() {
                           ) : null}
 
                           <div className="day-shift-list">
+                            {scheduleConflictSummaries.find((item) => item.dateValue === day.dateValue) ? (
+                              <div className="day-warning-banner">Conflicts detected for this day.</div>
+                            ) : null}
                             {day.shifts.length > 0 ? (
                               day.shifts.map((shift) => {
                                 const window = formatShiftWindow(shift);
@@ -1532,6 +1640,15 @@ export default function App() {
                       <input type="time" value={shiftForm.start_time} onChange={(event) => setShiftForm({ ...shiftForm, start_time: event.target.value })} />
                       <input type="time" value={shiftForm.end_time} onChange={(event) => setShiftForm({ ...shiftForm, end_time: event.target.value })} />
                     </div>
+                    {shiftFormWarnings.length > 0 ? (
+                      <div className="form-warning-stack">
+                        {shiftFormWarnings.map((warning) => (
+                          <div className="form-warning" key={warning}>
+                            {warning}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                     <input placeholder="Location" value={shiftForm.location_name} onChange={(event) => setShiftForm({ ...shiftForm, location_name: event.target.value })} />
                     <input placeholder="Role label" value={shiftForm.role_label} onChange={(event) => setShiftForm({ ...shiftForm, role_label: event.target.value })} />
                     {shiftForm.id ? (

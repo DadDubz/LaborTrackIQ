@@ -624,6 +624,27 @@ textarea {
   margin-top: 18px;
 }
 
+.planner-alerts,
+.form-warning-stack {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.planner-alert-card,
+.form-warning,
+.day-warning-banner {
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(180, 78, 47, 0.12);
+  color: #7c2614;
+}
+
+.planner-alert-card p,
+.day-warning-banner {
+  margin: 4px 0 0;
+}
+
 .week-day-card,
 .schedule-form {
   border-radius: 18px;
