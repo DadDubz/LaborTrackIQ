@@ -1079,9 +1079,12 @@ export default function App() {
   return (
     <div className="app-shell">
       <section className="brand-banner panel">
-        <div>
-          <p className="eyebrow">MiseIQ Brand System</p>
-          <h2>MiseIQ Workforce</h2>
+        <div className="brand-lockup">
+          <img className="brand-mark" src="/miseiq-mark.svg" alt="MiseIQ brand mark" />
+          <div>
+            <p className="eyebrow">MiseIQ Brand System</p>
+            <h2>MiseIQ Workforce</h2>
+          </div>
         </div>
         <p className="brand-copy">
           Styled to match your MiseIQ site with a deep navy foundation, warm parchment surfaces, gold accents, and
@@ -1093,6 +1096,9 @@ export default function App() {
         {!employeePortal ? (
           <div className="kiosk-layout">
             <div className="kiosk-copy panel">
+              <div className="inline-brand">
+                <img className="inline-brand-mark" src="/miseiq-mark.svg" alt="MiseIQ brand mark" />
+              </div>
               <p className="eyebrow">MiseIQ Workforce</p>
               <h1 className="kiosk-title">Clock In to the Shift Board</h1>
               <p className="hero-text">

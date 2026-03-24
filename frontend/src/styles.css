@@ -51,6 +51,27 @@ textarea {
   border: 1px solid rgba(214, 197, 164, 0.7);
 }
 
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand-mark {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+}
+
+.inline-brand {
+  margin-bottom: 12px;
+}
+
+.inline-brand-mark {
+  width: 42px;
+  height: 42px;
+}
+
 .brand-banner h2,
 .kiosk-title,
 .panel h3,
@@ -825,6 +846,10 @@ textarea {
   .schedule-toolbar,
   .brand-banner {
     flex-direction: column;
+  }
+
+  .brand-lockup {
+    align-items: flex-start;
   }
 
   .schedule-week-meta {
