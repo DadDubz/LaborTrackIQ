@@ -80,6 +80,19 @@ class ShiftRead(BaseModel):
     end_at: datetime
     location_name: Optional[str]
     role_label: Optional[str]
+    is_published: bool
+    published_at: Optional[datetime]
+
+
+class SchedulePublishRequest(BaseModel):
+    week_start: date
+
+
+class SchedulePublishResponse(BaseModel):
+    message: str
+    week_start: date
+    week_end: date
+    published_shift_count: int
 
 
 class NoteCreate(BaseModel):

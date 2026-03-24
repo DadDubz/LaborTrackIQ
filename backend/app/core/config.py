@@ -14,7 +14,7 @@ load_dotenv(BACKEND_DIR / ".env")
 
 class Settings(BaseModel):
     app_name: str = os.getenv("APP_NAME", "LaborTrackIQ API")
-    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./labortrackiq.db")
+    database_url: str = os.getenv("DATABASE_URL", f"sqlite:///{(BACKEND_DIR / 'labortrackiq.db').resolve()}")
     api_prefix: str = os.getenv("API_PREFIX", "/api")
     secret_key: str = os.getenv("SECRET_KEY", "labortrackiq-dev-secret")
     quickbooks_client_id: str = os.getenv("QUICKBOOKS_CLIENT_ID", "")

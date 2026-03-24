@@ -5,7 +5,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -43,6 +43,8 @@ from app.schemas import (
     QuickBooksConnectRequest,
     QuickBooksExportRequest,
     ReportRecipientCreate,
+    SchedulePublishRequest,
+    SchedulePublishResponse,
     ShiftCreate,
     ShiftRead,
     ShiftUpdate,
@@ -67,6 +69,18 @@ from app.services.quickbooks import (
 
 
 Base.metadata.create_all(bind=engine)
+
+
+def ensure_schedule_shift_publish_columns() -> None:
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(schedule_shifts)"))}
+        if "is_published" not in columns:
+            connection.execute(text("ALTER TABLE schedule_shifts ADD COLUMN is_published BOOLEAN DEFAULT 0"))
+        if "published_at" not in columns:
+            connection.execute(text("ALTER TABLE schedule_shifts ADD COLUMN published_at DATETIME"))
+
+
+ensure_schedule_shift_publish_columns()
 
 app = FastAPI(title=settings.app_name)
 
@@ -131,7 +145,13 @@ def find_employee_by_clock_credentials(
 def load_employee_clock_context(employee_id: int, organization_id: int, db: Session):
     shifts = db.scalars(
         select(ScheduleShift)
-        .where(and_(ScheduleShift.employee_id == employee_id, ScheduleShift.shift_date >= date.today()))
+        .where(
+            and_(
+                ScheduleShift.employee_id == employee_id,
+                ScheduleShift.shift_date >= date.today(),
+                ScheduleShift.is_published.is_(True),
+            )
+        )
         .order_by(ScheduleShift.start_at.asc())
     ).all()
     notes = db.scalars(
@@ -147,6 +167,10 @@ def load_employee_clock_context(employee_id: int, organization_id: int, db: Sess
         .order_by(ManagerNote.created_at.desc())
     ).all()
     return shifts, notes
+
+
+def week_end_from_start(week_start: date) -> date:
+    return date.fromordinal(week_start.toordinal() + 6)
 
 
 def serialize_user(user: User) -> UserRead:
@@ -366,7 +390,7 @@ def create_shift(
     current_user: User = Depends(require_admin_user),
 ):
     validate_organization_access(payload.organization_id, current_user)
-    shift = ScheduleShift(**payload.model_dump())
+    shift = ScheduleShift(**payload.model_dump(), is_published=False, published_at=None)
     db.add(shift)
     db.commit()
     db.refresh(shift)
@@ -400,9 +424,49 @@ def update_shift(
     shift.end_at = payload.end_at
     shift.location_name = payload.location_name
     shift.role_label = payload.role_label
+    shift.is_published = False
+    shift.published_at = None
     db.commit()
     db.refresh(shift)
     return shift
+
+
+@app.post(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/schedule/publish",
+    response_model=SchedulePublishResponse,
+)
+def publish_schedule_week(
+    organization_id: int,
+    payload: SchedulePublishRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    week_end = week_end_from_start(payload.week_start)
+    shifts = db.scalars(
+        select(ScheduleShift).where(
+            and_(
+                ScheduleShift.organization_id == organization_id,
+                ScheduleShift.shift_date >= payload.week_start,
+                ScheduleShift.shift_date <= week_end,
+            )
+        )
+    ).all()
+    if not shifts:
+        raise HTTPException(status_code=404, detail="No shifts found for the selected week.")
+
+    published_at = datetime.utcnow()
+    for shift in shifts:
+        shift.is_published = True
+        shift.published_at = published_at
+
+    db.commit()
+    return SchedulePublishResponse(
+        message="Schedule published successfully.",
+        week_start=payload.week_start,
+        week_end=week_end,
+        published_shift_count=len(shifts),
+    )
 
 
 @app.delete(f"{settings.api_prefix}/shifts/{{shift_id}}", response_model=dict)
@@ -421,7 +485,13 @@ def delete_shift(
 def get_employee_schedule(employee_id: int, db: Session = Depends(get_db)):
     shifts = db.scalars(
         select(ScheduleShift)
-        .where(and_(ScheduleShift.employee_id == employee_id, ScheduleShift.shift_date >= date.today()))
+        .where(
+            and_(
+                ScheduleShift.employee_id == employee_id,
+                ScheduleShift.shift_date >= date.today(),
+                ScheduleShift.is_published.is_(True),
+            )
+        )
         .order_by(ScheduleShift.start_at.asc())
     ).all()
     return list(shifts)
@@ -1100,6 +1170,10 @@ def bootstrap_demo(db: Session = Depends(get_db)):
             if profile:
                 profile.employee_number = "1001"
                 profile.pin_code = "1234"
+        existing_shifts = db.scalars(select(ScheduleShift).where(ScheduleShift.organization_id == existing_org.id)).all()
+        for shift in existing_shifts:
+            shift.is_published = True
+            shift.published_at = shift.published_at or datetime.utcnow()
         db.commit()
         return {
             "organization_id": existing_org.id,
@@ -1155,6 +1229,8 @@ def bootstrap_demo(db: Session = Depends(get_db)):
                 end_at=datetime.utcnow().replace(hour=22, minute=0, second=0, microsecond=0),
                 location_name="Main Store",
                 role_label="Front Counter",
+                is_published=True,
+                published_at=datetime.utcnow(),
             ),
             ManagerNote(
                 organization_id=organization.id,

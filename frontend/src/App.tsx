@@ -8,6 +8,8 @@ type Shift = {
   end_at: string;
   role_label: string | null;
   location_name: string | null;
+  is_published: boolean;
+  published_at: string | null;
 };
 
 type Note = {
@@ -72,6 +74,13 @@ type QuickBooksActionResponse = {
     start_date: string;
     end_date: string;
   };
+};
+
+type SchedulePublishResponse = {
+  message: string;
+  week_start: string;
+  week_end: string;
+  published_shift_count: number;
 };
 
 type QuickBooksAuthorization = {
@@ -758,6 +767,19 @@ export default function App() {
     await refreshAdminData("Previous week copied into the current planner.");
   }
 
+  async function handlePublishScheduleWeek() {
+    setAdminError("");
+    try {
+      const response = (await apiFetch(`/organizations/${organizationId}/schedule/publish`, {
+        method: "POST",
+        body: JSON.stringify({ week_start: scheduleWeekStart }),
+      })) as SchedulePublishResponse;
+      await refreshAdminData(`${response.published_shift_count} shift(s) published for ${formatWeekLabel(scheduleWeekStart)}.`);
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to publish schedule.");
+    }
+  }
+
   async function handleMoveShiftToDate(shiftId: number, targetDate: string) {
     const shift = shifts.find((item) => item.id === shiftId);
     if (!shift || shift.shift_date === targetDate) {
@@ -986,6 +1008,8 @@ export default function App() {
   }));
   const scheduledEmployeeCount = new Set(weeklyShifts.map((shift) => shift.employee_id)).size;
   const weeklyHours = weeklyShifts.reduce((total, shift) => total + getShiftHours(shift), 0);
+  const publishedWeeklyShifts = weeklyShifts.filter((shift) => shift.is_published);
+  const draftWeeklyShifts = weeklyShifts.filter((shift) => !shift.is_published);
   const weeklyPendingRequests = orgTimeOffRequests.filter(
     (request) =>
       request.status === "pending" && request.start_date <= scheduleWeekEnd && request.end_date >= scheduleWeekStart,
@@ -1248,7 +1272,7 @@ export default function App() {
             {employeeTab === "schedule" ? (
               <article className="panel">
                 <div className="panel-heading">
-                  <p className="eyebrow">Schedule</p>
+                  <p className="eyebrow">Published Schedule</p>
                   <h3>Bi-Weekly / Monthly View</h3>
                 </div>
                 <div className="schedule-calendar">
@@ -1549,6 +1573,14 @@ export default function App() {
                         <span>{weeklyPendingRequests.length}</span>
                         <p>Pending Requests</p>
                       </div>
+                      <div className="metric">
+                        <span>{publishedWeeklyShifts.length}</span>
+                        <p>Published</p>
+                      </div>
+                      <div className="metric">
+                        <span>{draftWeeklyShifts.length}</span>
+                        <p>Draft</p>
+                      </div>
                     </div>
 
                     {scheduleConflictSummaries.length > 0 || overtimeWarnings.length > 0 ? (
@@ -1573,6 +1605,9 @@ export default function App() {
                     <div className="action-row">
                       <button className="primary-button" type="button" onClick={() => void handleCopyPreviousWeek()}>
                         Copy Previous Week
+                      </button>
+                      <button className="primary-button secondary-publish-button" type="button" onClick={() => void handlePublishScheduleWeek()}>
+                        Publish Week
                       </button>
                       <button className="ghost-button" type="button" onClick={() => prepareShiftForDate(scheduleWeekStart)}>
                         Add Shift to Monday
@@ -1631,7 +1666,12 @@ export default function App() {
                                     onDragEnd={handleShiftDragEnd}
                                     onClick={() => loadShiftIntoForm(shift)}
                                   >
-                                    <strong>{employee?.full_name ?? `Employee ${shift.employee_id}`}</strong>
+                                    <div className="shift-tile-header">
+                                      <strong>{employee?.full_name ?? `Employee ${shift.employee_id}`}</strong>
+                                      <span className={shift.is_published ? "publish-pill published-pill" : "publish-pill draft-pill"}>
+                                        {shift.is_published ? "Published" : "Draft"}
+                                      </span>
+                                    </div>
                                     <p>{window.time}</p>
                                     <p>{shift.role_label ?? shift.location_name ?? "Scheduled shift"}</p>
                                   </button>
