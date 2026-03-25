@@ -47,9 +47,11 @@ from app.schemas import (
     ReportRecipientCreate,
     ScheduleAcknowledgmentCreate,
     ScheduleAcknowledgmentRead,
+    SchedulePublicationCommentUpdate,
     SchedulePublicationRead,
     SchedulePublishRequest,
     SchedulePublishResponse,
+    ScheduleRestoreResponse,
     ShiftCreate,
     ShiftRead,
     ShiftUpdate,
@@ -85,6 +87,9 @@ def ensure_schedule_shift_publish_columns() -> None:
             connection.execute(text("ALTER TABLE schedule_shifts ADD COLUMN published_at DATETIME"))
         if "published_by_name" not in columns:
             connection.execute(text("ALTER TABLE schedule_shifts ADD COLUMN published_by_name VARCHAR(180)"))
+        publication_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(schedule_publication_events)"))}
+        if publication_columns and "comment" not in publication_columns:
+            connection.execute(text("ALTER TABLE schedule_publication_events ADD COLUMN comment TEXT"))
 
 
 ensure_schedule_shift_publish_columns()
@@ -193,6 +198,14 @@ def build_shift_snapshot(shift: ScheduleShift) -> dict:
         "published_at": shift.published_at.isoformat() if shift.published_at else None,
         "published_by_name": shift.published_by_name,
     }
+
+
+def get_publication_event_for_admin(publication_id: int, current_user: User, db: Session) -> SchedulePublicationEvent:
+    publication = db.get(SchedulePublicationEvent, publication_id)
+    if not publication:
+        raise HTTPException(status_code=404, detail="Schedule publication event not found.")
+    validate_organization_access(publication.organization_id, current_user)
+    return publication
 
 
 def serialize_user(user: User) -> UserRead:
@@ -582,11 +595,101 @@ def list_schedule_publications(
             action=event.action,
             shift_count=event.shift_count,
             published_by_name=event.published_by_name,
+            comment=event.comment,
             created_at=event.created_at,
             acknowledged_count=ack_counts.get(event.week_start, 0),
         )
         for event in events
     ]
+
+
+@app.put(
+    f"{settings.api_prefix}/schedule/publications/{{publication_id}}",
+    response_model=SchedulePublicationRead,
+)
+def update_schedule_publication_comment(
+    publication_id: int,
+    payload: SchedulePublicationCommentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    publication = get_publication_event_for_admin(publication_id, current_user, db)
+    publication.comment = payload.comment
+    db.commit()
+    db.refresh(publication)
+    ack_count = db.scalar(
+        select(func.count())
+        .select_from(ScheduleAcknowledgment)
+        .where(
+            and_(
+                ScheduleAcknowledgment.organization_id == publication.organization_id,
+                ScheduleAcknowledgment.week_start == publication.week_start,
+            )
+        )
+    ) or 0
+    return SchedulePublicationRead(
+        id=publication.id,
+        organization_id=publication.organization_id,
+        week_start=publication.week_start,
+        week_end=publication.week_end,
+        action=publication.action,
+        shift_count=publication.shift_count,
+        published_by_name=publication.published_by_name,
+        comment=publication.comment,
+        created_at=publication.created_at,
+        acknowledged_count=ack_count,
+    )
+
+
+@app.post(
+    f"{settings.api_prefix}/schedule/publications/{{publication_id}}/restore",
+    response_model=ScheduleRestoreResponse,
+)
+def restore_schedule_from_snapshot(
+    publication_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    publication = get_publication_event_for_admin(publication_id, current_user, db)
+    week_end = publication.week_end
+    existing_shifts = db.scalars(
+        select(ScheduleShift).where(
+            and_(
+                ScheduleShift.organization_id == publication.organization_id,
+                ScheduleShift.shift_date >= publication.week_start,
+                ScheduleShift.shift_date <= week_end,
+            )
+        )
+    ).all()
+    for shift in existing_shifts:
+        db.delete(shift)
+    db.flush()
+
+    restored_count = 0
+    for snapshot in publication.snapshot_data:
+        db.add(
+            ScheduleShift(
+                organization_id=publication.organization_id,
+                employee_id=int(snapshot["employee_id"]),
+                shift_date=date.fromisoformat(snapshot["shift_date"]),
+                start_at=datetime.fromisoformat(snapshot["start_at"]),
+                end_at=datetime.fromisoformat(snapshot["end_at"]),
+                location_name=snapshot.get("location_name"),
+                role_label=snapshot.get("role_label"),
+                is_published=False,
+                published_at=snapshot.get("published_at") and datetime.fromisoformat(snapshot["published_at"]),
+                published_by_name=snapshot.get("published_by_name"),
+            )
+        )
+        restored_count += 1
+
+    db.commit()
+    return ScheduleRestoreResponse(
+        message="Schedule restored from snapshot as a draft week.",
+        week_start=publication.week_start,
+        week_end=week_end,
+        restored_shift_count=restored_count,
+    )
 
 
 @app.post(f"{settings.api_prefix}/schedule/acknowledgments", response_model=ScheduleAcknowledgmentRead)

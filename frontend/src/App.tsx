@@ -92,6 +92,7 @@ type SchedulePublication = {
   action: string;
   shift_count: number;
   published_by_name: string;
+  comment: string | null;
   created_at: string;
   acknowledged_count: number;
 };
@@ -336,6 +337,7 @@ export default function App() {
   const [requestQueueTab, setRequestQueueTab] = useState<RequestQueueTab>("pending");
   const [draggingShiftId, setDraggingShiftId] = useState<number | null>(null);
   const [dragTargetDate, setDragTargetDate] = useState<string | null>(null);
+  const [publicationForm, setPublicationForm] = useState({ id: null as number | null, comment: "" });
 
   useEffect(() => {
     const storedToken = window.localStorage.getItem("labortrackiq_token");
@@ -855,6 +857,35 @@ export default function App() {
       await refreshAdminData(`${response.published_shift_count} published shift(s) moved back to draft for ${formatWeekLabel(scheduleWeekStart)}.`);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "Unable to unpublish schedule.");
+    }
+  }
+
+  async function handleSavePublicationComment(event?: FormEvent) {
+    event?.preventDefault();
+    if (!publicationForm.id) {
+      return;
+    }
+    setAdminError("");
+    try {
+      await apiFetch(`/schedule/publications/${publicationForm.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ comment: publicationForm.comment || null }),
+      });
+      await refreshAdminData("Schedule snapshot comment saved.");
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to save schedule comment.");
+    }
+  }
+
+  async function handleRestorePublication(publicationId: number) {
+    setAdminError("");
+    try {
+      const response = (await apiFetch(`/schedule/publications/${publicationId}/restore`, {
+        method: "POST",
+      })) as { message: string; restored_shift_count: number };
+      await refreshAdminData(`${response.restored_shift_count} shift(s) restored from the snapshot as draft shifts.`);
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to restore schedule snapshot.");
     }
   }
 
@@ -1403,6 +1434,19 @@ export default function App() {
                     <div className="empty-state">No schedule has been posted for you yet.</div>
                   )}
                 </div>
+                <div className="schedule-sidebar-list employee-ack-feed">
+                  <strong>Acknowledgment History</strong>
+                  {employeeScheduleAcknowledgments.length > 0 ? (
+                    employeeScheduleAcknowledgments.map((acknowledgment) => (
+                      <div className="entity-card" key={acknowledgment.id}>
+                        <strong>{formatWeekLabel(acknowledgment.week_start)}</strong>
+                        <p>Acknowledged on {new Date(acknowledgment.acknowledged_at).toLocaleString()}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="empty-state">You have not acknowledged a published schedule yet.</div>
+                  )}
+                </div>
               </article>
             ) : null}
 
@@ -1899,7 +1943,17 @@ export default function App() {
                       <strong>Publish Audit</strong>
                       {recentSchedulePublications.length > 0 ? (
                         recentSchedulePublications.map((publication) => (
-                          <div className="entity-card" key={publication.id}>
+                          <button
+                            className="entity-card entity-button"
+                            key={publication.id}
+                            type="button"
+                            onClick={() =>
+                              setPublicationForm({
+                                id: publication.id,
+                                comment: publication.comment ?? "",
+                              })
+                            }
+                          >
                             <strong>
                               {publication.action === "published" ? "Published" : "Unpublished"} • {formatWeekLabel(publication.week_start)}
                             </strong>
@@ -1907,11 +1961,33 @@ export default function App() {
                             <p>
                               {publication.published_by_name} • {publication.shift_count} shift snapshot • {publication.acknowledged_count} acknowledgment(s)
                             </p>
-                          </div>
+                            {publication.comment ? <p>Manager comment: {publication.comment}</p> : null}
+                          </button>
                         ))
                       ) : (
                         <div className="empty-state">No publish history yet.</div>
                       )}
+                    </div>
+                    <div className="schedule-sidebar-list">
+                      <strong>Snapshot Notes</strong>
+                      <textarea
+                        placeholder="Select a publish event to add a manager note"
+                        value={publicationForm.comment}
+                        onChange={(event) => setPublicationForm({ ...publicationForm, comment: event.target.value })}
+                      />
+                      <div className="action-row">
+                        <button className="primary-button" type="button" disabled={!publicationForm.id} onClick={() => void handleSavePublicationComment()}>
+                          Save Comment
+                        </button>
+                        <button
+                          className="ghost-button"
+                          type="button"
+                          disabled={!publicationForm.id}
+                          onClick={() => publicationForm.id && void handleRestorePublication(publicationForm.id)}
+                        >
+                          Restore Snapshot
+                        </button>
+                      </div>
                     </div>
                   </form>
                 </div>

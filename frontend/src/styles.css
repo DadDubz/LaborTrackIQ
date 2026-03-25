@@ -820,6 +820,19 @@ textarea {
   gap: 10px;
 }
 
+.schedule-sidebar-list textarea {
+  min-height: 110px;
+  border: 1px solid rgba(29, 36, 51, 0.12);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.8);
+  resize: vertical;
+}
+
+.employee-ack-feed {
+  margin-top: 18px;
+}
+
 .day-request-list {
   margin-bottom: 12px;
 }

@@ -104,6 +104,7 @@ class SchedulePublicationRead(BaseModel):
     action: str
     shift_count: int
     published_by_name: str
+    comment: Optional[str] = None
     created_at: datetime
     acknowledged_count: int = 0
 
@@ -122,6 +123,17 @@ class ScheduleAcknowledgmentRead(BaseModel):
     employee_id: int
     week_start: date
     acknowledged_at: datetime
+
+
+class SchedulePublicationCommentUpdate(BaseModel):
+    comment: Optional[str] = None
+
+
+class ScheduleRestoreResponse(BaseModel):
+    message: str
+    week_start: date
+    week_end: date
+    restored_shift_count: int
 
 
 class NoteCreate(BaseModel):

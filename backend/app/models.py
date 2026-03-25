@@ -189,6 +189,7 @@ class SchedulePublicationEvent(Base):
     action: Mapped[str] = mapped_column(String(32), nullable=False)
     shift_count: Mapped[int] = mapped_column(Integer, default=0)
     published_by_name: Mapped[str] = mapped_column(String(180), nullable=False)
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     snapshot_data: Mapped[list[dict]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
