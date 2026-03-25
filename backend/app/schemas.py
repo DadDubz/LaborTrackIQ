@@ -5,7 +5,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
-from app.models import IntegrationProvider, IntegrationStatus, TimeOffStatus, UserRole
+from app.models import AvailabilityStatus, IntegrationProvider, IntegrationStatus, TimeOffStatus, UserRole
 
 
 class OrganizationCreate(BaseModel):
@@ -134,6 +134,33 @@ class ScheduleRestoreResponse(BaseModel):
     week_start: date
     week_end: date
     restored_shift_count: int
+
+
+class AvailabilityRequestCreate(BaseModel):
+    organization_id: int
+    employee_id: int
+    weekday: int
+    start_time: str
+    end_time: str
+
+
+class AvailabilityRequestRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    organization_id: int
+    employee_id: int
+    weekday: int
+    start_time: str
+    end_time: str
+    status: AvailabilityStatus
+    manager_response: Optional[str]
+    created_at: datetime
+
+
+class AvailabilityRequestUpdate(BaseModel):
+    status: AvailabilityStatus
+    manager_response: Optional[str] = None
 
 
 class NoteCreate(BaseModel):

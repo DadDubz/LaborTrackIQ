@@ -105,6 +105,18 @@ type ScheduleAcknowledgment = {
   acknowledged_at: string;
 };
 
+type AvailabilityRequest = {
+  id: number;
+  organization_id: number;
+  employee_id: number;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  status: string;
+  manager_response: string | null;
+  created_at: string;
+};
+
 type QuickBooksAuthorization = {
   authorization_url: string;
   state: string;
@@ -153,7 +165,7 @@ type TimeOffRequest = {
 };
 
 type AdminTab = "setup" | "employees" | "schedules" | "notes" | "requests" | "integrations";
-type EmployeeTab = "home" | "schedule" | "request_off";
+type EmployeeTab = "home" | "schedule" | "request_off" | "availability";
 type KeypadField = "employee" | "pin";
 type RequestQueueTab = "pending" | "approved";
 
@@ -241,6 +253,10 @@ function formatScheduleDayLabel(dateValue: string) {
   });
 }
 
+function weekdayLabel(value: number) {
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][value] ?? "Day";
+}
+
 function getShiftHours(shift: Shift) {
   const start = new Date(shift.start_at).getTime();
   const end = new Date(shift.end_at).getTime();
@@ -262,6 +278,7 @@ export default function App() {
   const [employeeError, setEmployeeError] = useState("");
   const [isClockLoading, setIsClockLoading] = useState(false);
   const [employeeRequests, setEmployeeRequests] = useState<TimeOffRequest[]>([]);
+  const [employeeAvailabilityRequests, setEmployeeAvailabilityRequests] = useState<AvailabilityRequest[]>([]);
   const [employeeScheduleAcknowledgments, setEmployeeScheduleAcknowledgments] = useState<ScheduleAcknowledgment[]>([]);
   const [requestOffForm, setRequestOffForm] = useState({
     start_date: new Date().toISOString().slice(0, 10),
@@ -269,6 +286,11 @@ export default function App() {
     reason: "",
   });
   const [requestOffMessage, setRequestOffMessage] = useState("");
+  const [availabilityForm, setAvailabilityForm] = useState({
+    weekday: String(new Date().getDay()),
+    start_time: "09:00",
+    end_time: "17:00",
+  });
 
   const [adminEmail, setAdminEmail] = useState("admin@demodiner.com");
   const [adminPassword, setAdminPassword] = useState("admin1234");
@@ -282,6 +304,7 @@ export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [orgTimeOffRequests, setOrgTimeOffRequests] = useState<TimeOffRequest[]>([]);
+  const [orgAvailabilityRequests, setOrgAvailabilityRequests] = useState<AvailabilityRequest[]>([]);
   const [schedulePublications, setSchedulePublications] = useState<SchedulePublication[]>([]);
   const [adminTab, setAdminTab] = useState<AdminTab>("setup");
   const [setupMessage, setSetupMessage] = useState("Preparing demo workspace...");
@@ -338,6 +361,11 @@ export default function App() {
   const [draggingShiftId, setDraggingShiftId] = useState<number | null>(null);
   const [dragTargetDate, setDragTargetDate] = useState<string | null>(null);
   const [publicationForm, setPublicationForm] = useState({ id: null as number | null, comment: "" });
+  const [availabilityReviewForm, setAvailabilityReviewForm] = useState({
+    id: null as number | null,
+    status: "pending",
+    manager_response: "",
+  });
 
   useEffect(() => {
     const storedToken = window.localStorage.getItem("labortrackiq_token");
@@ -401,7 +429,7 @@ export default function App() {
 
   async function loadAdminData(accessToken: string, orgId: string) {
     try {
-      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData, publicationData] = await Promise.all([
+      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData, publicationData, availabilityData] = await Promise.all([
         apiFetch(`/organizations/${orgId}/dashboard-summary`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/users`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/shifts`, {}, accessToken),
@@ -410,6 +438,7 @@ export default function App() {
         apiFetch(`/organizations/${orgId}/setup-overview`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/time-off-requests`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/schedule/publications`, {}, accessToken),
+        apiFetch(`/organizations/${orgId}/availability-requests`, {}, accessToken),
       ]);
       const quickBooksConfigData = (await apiFetch(
         `/organizations/${orgId}/integrations/quickbooks/config-status`,
@@ -425,6 +454,7 @@ export default function App() {
       setSetupOverview(setupOverviewData as SetupOverview);
       setOrgTimeOffRequests(requestData as TimeOffRequest[]);
       setSchedulePublications(publicationData as SchedulePublication[]);
+      setOrgAvailabilityRequests(availabilityData as AvailabilityRequest[]);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "Unable to load admin data.");
     }
@@ -446,6 +476,15 @@ export default function App() {
       setEmployeeRequests(data);
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to load requests.");
+    }
+  }
+
+  async function loadEmployeeAvailabilityRequests(employeeId: number) {
+    try {
+      const data = (await apiFetch(`/employees/${employeeId}/availability-requests`, {}, "")) as AvailabilityRequest[];
+      setEmployeeAvailabilityRequests(data);
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Unable to load availability requests.");
     }
   }
 
@@ -561,6 +600,7 @@ export default function App() {
       setEmployeeClockMessage(`${data.employee_name} ${data.status.replace("_", " ")} successfully.`);
       setRequestOffMessage("");
       await loadEmployeeRequests(data.employee_id);
+      await loadEmployeeAvailabilityRequests(data.employee_id);
       await loadEmployeeScheduleAcknowledgments(data.employee_id);
       if (token) {
         await loadAdminData(token, organizationId);
@@ -578,6 +618,7 @@ export default function App() {
     setEmployeeClockMessage("Employee signed out from the kiosk.");
     setRequestOffMessage("");
     setEmployeeRequests([]);
+    setEmployeeAvailabilityRequests([]);
     setEmployeeScheduleAcknowledgments([]);
     setPinCode("");
     setActiveKeypadField("employee");
@@ -642,6 +683,34 @@ export default function App() {
       }
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to acknowledge the schedule update.");
+    }
+  }
+
+  async function handleAvailabilitySubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!employeePortal) {
+      return;
+    }
+    setEmployeeError("");
+    try {
+      await apiFetch(
+        "/availability-requests",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            organization_id: Number(organizationId),
+            employee_id: employeePortal.employee_id,
+            weekday: Number(availabilityForm.weekday),
+            start_time: availabilityForm.start_time,
+            end_time: availabilityForm.end_time,
+          }),
+        },
+        "",
+      );
+      setRequestOffMessage("Availability request submitted for manager review.");
+      await loadEmployeeAvailabilityRequests(employeePortal.employee_id);
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Unable to submit availability request.");
     }
   }
 
@@ -889,6 +958,27 @@ export default function App() {
     }
   }
 
+  async function handleReviewAvailability(event: FormEvent) {
+    event.preventDefault();
+    if (!availabilityReviewForm.id) {
+      return;
+    }
+    setAdminError("");
+    try {
+      await apiFetch(`/availability-requests/${availabilityReviewForm.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          status: availabilityReviewForm.status,
+          manager_response: availabilityReviewForm.manager_response || null,
+        }),
+      });
+      await refreshAdminData("Availability request updated.");
+      setAvailabilityReviewForm({ id: null, status: "pending", manager_response: "" });
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to update availability request.");
+    }
+  }
+
   async function handleMoveShiftToDate(shiftId: number, targetDate: string) {
     const shift = shifts.find((item) => item.id === shiftId);
     if (!shift || shift.shift_date === targetDate) {
@@ -1124,6 +1214,18 @@ export default function App() {
       (request) =>
         request.status !== "denied" && request.start_date <= dateValue && request.end_date >= dateValue,
     ),
+    availabilitySuggestions: orgAvailabilityRequests.filter((request) => {
+      const weekday = new Date(`${dateValue}T00:00:00`).getDay();
+      const employeeScheduled = weeklyShifts.some((shift) => shift.shift_date === dateValue && shift.employee_id === request.employee_id);
+      const employeeOff = orgTimeOffRequests.some(
+        (timeOff) =>
+          timeOff.status === "approved" &&
+          timeOff.employee_id === request.employee_id &&
+          timeOff.start_date <= dateValue &&
+          timeOff.end_date >= dateValue,
+      );
+      return request.status === "approved" && request.weekday === weekday && !employeeScheduled && !employeeOff;
+    }),
   }));
   const scheduledEmployeeCount = new Set(weeklyShifts.map((shift) => shift.employee_id)).size;
   const weeklyHours = weeklyShifts.reduce((total, shift) => total + getShiftHours(shift), 0);
@@ -1221,6 +1323,7 @@ export default function App() {
   const pendingTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "pending");
   const approvedTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "approved");
   const visibleTimeOffRequests = requestQueueTab === "pending" ? pendingTimeOffRequests : approvedTimeOffRequests;
+  const pendingAvailabilityRequests = orgAvailabilityRequests.filter((request) => request.status === "pending");
   const recentSchedulePublications = schedulePublications.slice(0, 6);
 
   return (
@@ -1329,14 +1432,14 @@ export default function App() {
             </div>
 
             <div className="tab-row">
-              {(["home", "schedule", "request_off"] as EmployeeTab[]).map((tab) => (
+              {(["home", "schedule", "request_off", "availability"] as EmployeeTab[]).map((tab) => (
                 <button
                   key={tab}
                   className={employeeTab === tab ? "tab active-tab" : "tab"}
                   type="button"
                   onClick={() => setEmployeeTab(tab)}
                 >
-                  {tab === "request_off" ? "Request Off" : tab[0].toUpperCase() + tab.slice(1)}
+                  {tab === "request_off" ? "Request Off" : tab === "availability" ? "Availability" : tab[0].toUpperCase() + tab.slice(1)}
                 </button>
               ))}
             </div>
@@ -1490,6 +1593,52 @@ export default function App() {
                     ))
                   ) : (
                     <div className="empty-state">No request-off submissions yet.</div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {employeeTab === "availability" ? (
+              <div className="employee-grid">
+                <form className="stack-form" onSubmit={handleAvailabilitySubmit}>
+                  <h4>Recurring Availability</h4>
+                  <select value={availabilityForm.weekday} onChange={(event) => setAvailabilityForm({ ...availabilityForm, weekday: event.target.value })}>
+                    {Array.from({ length: 7 }, (_, value) => (
+                      <option key={value} value={value}>
+                        {weekdayLabel(value)}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="split-row">
+                    <input
+                      type="time"
+                      value={availabilityForm.start_time}
+                      onChange={(event) => setAvailabilityForm({ ...availabilityForm, start_time: event.target.value })}
+                    />
+                    <input
+                      type="time"
+                      value={availabilityForm.end_time}
+                      onChange={(event) => setAvailabilityForm({ ...availabilityForm, end_time: event.target.value })}
+                    />
+                  </div>
+                  <button className="primary-button" type="submit">
+                    Submit Availability
+                  </button>
+                </form>
+
+                <div className="scroll-list">
+                  {employeeAvailabilityRequests.length > 0 ? (
+                    employeeAvailabilityRequests.map((request) => (
+                      <div className="entity-card" key={request.id}>
+                        <strong>
+                          {weekdayLabel(request.weekday)} • {request.start_time} - {request.end_time}
+                        </strong>
+                        <p>Status: {request.status}</p>
+                        {request.manager_response ? <p>Manager reply: {request.manager_response}</p> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="empty-state">No recurring availability requests submitted yet.</div>
                   )}
                 </div>
               </div>
@@ -1811,6 +1960,20 @@ export default function App() {
                             </div>
                           ) : null}
 
+                          {day.availabilitySuggestions.length > 0 ? (
+                            <div className="day-request-list">
+                              {day.availabilitySuggestions.map((request) => {
+                                const employee = employeeOptions.find((item) => item.id === request.employee_id);
+                                return (
+                                  <div className="mini-request availability-suggestion" key={request.id}>
+                                    <strong>{employee?.full_name ?? `Employee ${request.employee_id}`}</strong>
+                                    <span>{request.start_time} - {request.end_time}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+
                           <div className="day-shift-list">
                             {scheduleConflictSummaries.find((item) => item.dateValue === day.dateValue) ? (
                               <div className="day-warning-banner">Conflicts detected for this day.</div>
@@ -1938,6 +2101,49 @@ export default function App() {
                           );
                         })}
                       </div>
+                    ) : null}
+                    {pendingAvailabilityRequests.length > 0 ? (
+                      <form className="schedule-sidebar-list" onSubmit={handleReviewAvailability}>
+                        <strong>Pending Availability Requests</strong>
+                        {pendingAvailabilityRequests.map((request) => {
+                          const employee = employeeOptions.find((item) => item.id === request.employee_id);
+                          return (
+                            <button
+                              className="entity-card entity-button"
+                              key={request.id}
+                              type="button"
+                              onClick={() =>
+                                setAvailabilityReviewForm({
+                                  id: request.id,
+                                  status: request.status,
+                                  manager_response: request.manager_response ?? "",
+                                })
+                              }
+                            >
+                              <strong>{employee?.full_name ?? `Employee ${request.employee_id}`}</strong>
+                              <p>
+                                {weekdayLabel(request.weekday)} • {request.start_time} - {request.end_time}
+                              </p>
+                            </button>
+                          );
+                        })}
+                        <select
+                          value={availabilityReviewForm.status}
+                          onChange={(event) => setAvailabilityReviewForm({ ...availabilityReviewForm, status: event.target.value })}
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="approved">Approved</option>
+                          <option value="denied">Denied</option>
+                        </select>
+                        <textarea
+                          placeholder="Optional manager response"
+                          value={availabilityReviewForm.manager_response}
+                          onChange={(event) => setAvailabilityReviewForm({ ...availabilityReviewForm, manager_response: event.target.value })}
+                        />
+                        <button className="primary-button" type="submit" disabled={!availabilityReviewForm.id}>
+                          Save Availability Review
+                        </button>
+                      </form>
                     ) : null}
                     <div className="schedule-sidebar-list">
                       <strong>Publish Audit</strong>

@@ -38,6 +38,12 @@ class TimeOffStatus(str, Enum):
     DENIED = "denied"
 
 
+class AvailabilityStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+
+
 class Organization(Base):
     __tablename__ = "organizations"
 
@@ -51,6 +57,7 @@ class Organization(Base):
     shifts: Mapped[list["ScheduleShift"]] = relationship(back_populates="organization")
     time_entries: Mapped[list["TimeEntry"]] = relationship(back_populates="organization")
     time_off_requests: Mapped[list["TimeOffRequest"]] = relationship(back_populates="organization")
+    availability_requests: Mapped[list["EmployeeAvailabilityRequest"]] = relationship(back_populates="organization")
 
 
 class User(Base):
@@ -71,6 +78,7 @@ class User(Base):
     time_entries: Mapped[list["TimeEntry"]] = relationship(back_populates="employee")
     assigned_notes: Mapped[list["ManagerNote"]] = relationship(back_populates="employee")
     time_off_requests: Mapped[list["TimeOffRequest"]] = relationship(back_populates="employee")
+    availability_requests: Mapped[list["EmployeeAvailabilityRequest"]] = relationship(back_populates="employee")
 
 
 class EmployeeProfile(Base):
@@ -121,6 +129,23 @@ class TimeEntry(Base):
 
     organization: Mapped["Organization"] = relationship(back_populates="time_entries")
     employee: Mapped["User"] = relationship(back_populates="time_entries")
+
+
+class EmployeeAvailabilityRequest(Base):
+    __tablename__ = "employee_availability_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_time: Mapped[str] = mapped_column(String(5), nullable=False)
+    end_time: Mapped[str] = mapped_column(String(5), nullable=False)
+    status: Mapped[AvailabilityStatus] = mapped_column(SqlEnum(AvailabilityStatus), default=AvailabilityStatus.PENDING)
+    manager_response: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    organization: Mapped["Organization"] = relationship(back_populates="availability_requests")
+    employee: Mapped["User"] = relationship(back_populates="availability_requests")
 
 
 class ManagerNote(Base):

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import Base, engine, get_db
 from app.models import (
+    EmployeeAvailabilityRequest,
     EmployeeProfile,
     IntegrationConnection,
     IntegrationProvider,
@@ -27,6 +28,9 @@ from app.models import (
     UserRole,
 )
 from app.schemas import (
+    AvailabilityRequestCreate,
+    AvailabilityRequestRead,
+    AvailabilityRequestUpdate,
     ClockAction,
     ClockLookupResponse,
     ClockResponse,
@@ -769,6 +773,73 @@ def list_employee_time_off_requests(employee_id: int, db: Session = Depends(get_
         select(TimeOffRequest).where(TimeOffRequest.employee_id == employee_id).order_by(TimeOffRequest.created_at.desc())
     ).all()
     return list(requests)
+
+
+@app.get(
+    f"{settings.api_prefix}/employees/{{employee_id}}/availability-requests",
+    response_model=list[AvailabilityRequestRead],
+)
+def list_employee_availability_requests(employee_id: int, db: Session = Depends(get_db)):
+    requests = db.scalars(
+        select(EmployeeAvailabilityRequest)
+        .where(EmployeeAvailabilityRequest.employee_id == employee_id)
+        .order_by(EmployeeAvailabilityRequest.created_at.desc())
+    ).all()
+    return list(requests)
+
+
+@app.post(f"{settings.api_prefix}/availability-requests", response_model=AvailabilityRequestRead)
+def create_availability_request(payload: AvailabilityRequestCreate, db: Session = Depends(get_db)):
+    employee = get_employee_or_404(payload.employee_id, payload.organization_id, db)
+    if payload.weekday < 0 or payload.weekday > 6:
+        raise HTTPException(status_code=400, detail="weekday must be between 0 and 6.")
+    request = EmployeeAvailabilityRequest(
+        organization_id=payload.organization_id,
+        employee_id=employee.id,
+        weekday=payload.weekday,
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+    )
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+@app.get(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/availability-requests",
+    response_model=list[AvailabilityRequestRead],
+)
+def list_org_availability_requests(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    requests = db.scalars(
+        select(EmployeeAvailabilityRequest)
+        .where(EmployeeAvailabilityRequest.organization_id == organization_id)
+        .order_by(EmployeeAvailabilityRequest.created_at.desc())
+    ).all()
+    return list(requests)
+
+
+@app.put(f"{settings.api_prefix}/availability-requests/{{request_id}}", response_model=AvailabilityRequestRead)
+def update_availability_request(
+    request_id: int,
+    payload: AvailabilityRequestUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    request = db.get(EmployeeAvailabilityRequest, request_id)
+    if not request:
+        raise HTTPException(status_code=404, detail="Availability request not found.")
+    validate_organization_access(request.organization_id, current_user)
+    request.status = payload.status
+    request.manager_response = payload.manager_response
+    db.commit()
+    db.refresh(request)
+    return request
 
 
 @app.post(f"{settings.api_prefix}/time-off-requests", response_model=TimeOffRequestRead)
