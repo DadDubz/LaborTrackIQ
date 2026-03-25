@@ -78,10 +78,30 @@ type QuickBooksActionResponse = {
 };
 
 type SchedulePublishResponse = {
-  message: string;
+    message: string;
+    week_start: string;
+    week_end: string;
+    published_shift_count: number;
+};
+
+type SchedulePublication = {
+  id: number;
+  organization_id: number;
   week_start: string;
   week_end: string;
-  published_shift_count: number;
+  action: string;
+  shift_count: number;
+  published_by_name: string;
+  created_at: string;
+  acknowledged_count: number;
+};
+
+type ScheduleAcknowledgment = {
+  id: number;
+  organization_id: number;
+  employee_id: number;
+  week_start: string;
+  acknowledged_at: string;
 };
 
 type QuickBooksAuthorization = {
@@ -241,6 +261,7 @@ export default function App() {
   const [employeeError, setEmployeeError] = useState("");
   const [isClockLoading, setIsClockLoading] = useState(false);
   const [employeeRequests, setEmployeeRequests] = useState<TimeOffRequest[]>([]);
+  const [employeeScheduleAcknowledgments, setEmployeeScheduleAcknowledgments] = useState<ScheduleAcknowledgment[]>([]);
   const [requestOffForm, setRequestOffForm] = useState({
     start_date: new Date().toISOString().slice(0, 10),
     end_date: new Date().toISOString().slice(0, 10),
@@ -260,6 +281,7 @@ export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [orgTimeOffRequests, setOrgTimeOffRequests] = useState<TimeOffRequest[]>([]);
+  const [schedulePublications, setSchedulePublications] = useState<SchedulePublication[]>([]);
   const [adminTab, setAdminTab] = useState<AdminTab>("setup");
   const [setupMessage, setSetupMessage] = useState("Preparing demo workspace...");
   const [exportSummary, setExportSummary] = useState<QuickBooksActionResponse["export_summary"] | null>(null);
@@ -377,7 +399,7 @@ export default function App() {
 
   async function loadAdminData(accessToken: string, orgId: string) {
     try {
-      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData] = await Promise.all([
+      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData, publicationData] = await Promise.all([
         apiFetch(`/organizations/${orgId}/dashboard-summary`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/users`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/shifts`, {}, accessToken),
@@ -385,6 +407,7 @@ export default function App() {
         apiFetch(`/organizations/${orgId}/integrations`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/setup-overview`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/time-off-requests`, {}, accessToken),
+        apiFetch(`/organizations/${orgId}/schedule/publications`, {}, accessToken),
       ]);
       const quickBooksConfigData = (await apiFetch(
         `/organizations/${orgId}/integrations/quickbooks/config-status`,
@@ -399,6 +422,7 @@ export default function App() {
       setQuickBooksConfig(quickBooksConfigData);
       setSetupOverview(setupOverviewData as SetupOverview);
       setOrgTimeOffRequests(requestData as TimeOffRequest[]);
+      setSchedulePublications(publicationData as SchedulePublication[]);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "Unable to load admin data.");
     }
@@ -420,6 +444,15 @@ export default function App() {
       setEmployeeRequests(data);
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to load requests.");
+    }
+  }
+
+  async function loadEmployeeScheduleAcknowledgments(employeeId: number) {
+    try {
+      const data = (await apiFetch(`/employees/${employeeId}/schedule/acknowledgments`, {}, "")) as ScheduleAcknowledgment[];
+      setEmployeeScheduleAcknowledgments(data);
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Unable to load schedule acknowledgments.");
     }
   }
 
@@ -526,6 +559,7 @@ export default function App() {
       setEmployeeClockMessage(`${data.employee_name} ${data.status.replace("_", " ")} successfully.`);
       setRequestOffMessage("");
       await loadEmployeeRequests(data.employee_id);
+      await loadEmployeeScheduleAcknowledgments(data.employee_id);
       if (token) {
         await loadAdminData(token, organizationId);
       }
@@ -542,6 +576,7 @@ export default function App() {
     setEmployeeClockMessage("Employee signed out from the kiosk.");
     setRequestOffMessage("");
     setEmployeeRequests([]);
+    setEmployeeScheduleAcknowledgments([]);
     setPinCode("");
     setActiveKeypadField("employee");
   }
@@ -576,6 +611,35 @@ export default function App() {
       await loadEmployeeRequests(employeePortal.employee_id);
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to submit request off.");
+    }
+  }
+
+  async function handleAcknowledgeSchedule() {
+    if (!employeePortal || !employeeLatestPublishedShift) {
+      return;
+    }
+    const latestWeekStart = getWeekStartIso(new Date(`${employeeLatestPublishedShift.shift_date}T00:00:00`));
+    setEmployeeError("");
+    try {
+      await apiFetch(
+        "/schedule/acknowledgments",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            organization_id: Number(organizationId),
+            employee_id: employeePortal.employee_id,
+            week_start: latestWeekStart,
+          }),
+        },
+        "",
+      );
+      setRequestOffMessage("Schedule update acknowledged.");
+      await loadEmployeeScheduleAcknowledgments(employeePortal.employee_id);
+      if (token) {
+        await loadAdminData(token, organizationId);
+      }
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Unable to acknowledge the schedule update.");
     }
   }
 
@@ -1007,6 +1071,13 @@ export default function App() {
   const employeeLatestPublishedShift = [...(employeePortal?.schedule ?? [])]
     .filter((shift) => shift.published_at)
     .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""))[0];
+  const employeeAcknowledgedWeeks = new Set(employeeScheduleAcknowledgments.map((acknowledgment) => acknowledgment.week_start));
+  const employeeLatestPublishedWeekStart = employeeLatestPublishedShift
+    ? getWeekStartIso(new Date(`${employeeLatestPublishedShift.shift_date}T00:00:00`))
+    : null;
+  const employeeLatestScheduleAcknowledged = employeeLatestPublishedWeekStart
+    ? employeeAcknowledgedWeeks.has(employeeLatestPublishedWeekStart)
+    : false;
   const employeeOptions = employees.filter((employee) => employee.role === "employee");
   const quickBooksIntegration = integrations.find((integration) => integration.provider === "quickbooks");
   const scheduleWeekDays = Array.from({ length: 7 }, (_, index) => addDays(scheduleWeekStart, index));
@@ -1119,6 +1190,7 @@ export default function App() {
   const pendingTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "pending");
   const approvedTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "approved");
   const visibleTimeOffRequests = requestQueueTab === "pending" ? pendingTimeOffRequests : approvedTimeOffRequests;
+  const recentSchedulePublications = schedulePublications.slice(0, 6);
 
   return (
     <div className="app-shell">
@@ -1242,9 +1314,18 @@ export default function App() {
             {requestOffMessage ? <div className="inline-message">{requestOffMessage}</div> : null}
             {employeeLatestPublishedShift ? (
               <div className="schedule-notice-banner">
-                Latest published schedule update:{" "}
-                {new Date(employeeLatestPublishedShift.published_at ?? "").toLocaleDateString()} by{" "}
-                {employeeLatestPublishedShift.published_by_name ?? "your manager"}.
+                <div>
+                  Latest published schedule update:{" "}
+                  {new Date(employeeLatestPublishedShift.published_at ?? "").toLocaleDateString()} by{" "}
+                  {employeeLatestPublishedShift.published_by_name ?? "your manager"}.
+                </div>
+                {!employeeLatestScheduleAcknowledged ? (
+                  <button className="primary-button" type="button" onClick={() => void handleAcknowledgeSchedule()}>
+                    Acknowledge Update
+                  </button>
+                ) : (
+                  <span className="publish-pill published-pill">Acknowledged</span>
+                )}
               </div>
             ) : null}
 
@@ -1814,6 +1895,24 @@ export default function App() {
                         })}
                       </div>
                     ) : null}
+                    <div className="schedule-sidebar-list">
+                      <strong>Publish Audit</strong>
+                      {recentSchedulePublications.length > 0 ? (
+                        recentSchedulePublications.map((publication) => (
+                          <div className="entity-card" key={publication.id}>
+                            <strong>
+                              {publication.action === "published" ? "Published" : "Unpublished"} • {formatWeekLabel(publication.week_start)}
+                            </strong>
+                            <p>{new Date(publication.created_at).toLocaleString()}</p>
+                            <p>
+                              {publication.published_by_name} • {publication.shift_count} shift snapshot • {publication.acknowledged_count} acknowledgment(s)
+                            </p>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="empty-state">No publish history yet.</div>
+                      )}
+                    </div>
                   </form>
                 </div>
               ) : null}

@@ -177,3 +177,27 @@ class TimeOffRequest(Base):
 
     organization: Mapped["Organization"] = relationship(back_populates="time_off_requests")
     employee: Mapped["User"] = relationship(back_populates="time_off_requests")
+
+
+class SchedulePublicationEvent(Base):
+    __tablename__ = "schedule_publication_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
+    week_start: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    week_end: Mapped[date] = mapped_column(Date, nullable=False)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    shift_count: Mapped[int] = mapped_column(Integer, default=0)
+    published_by_name: Mapped[str] = mapped_column(String(180), nullable=False)
+    snapshot_data: Mapped[list[dict]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ScheduleAcknowledgment(Base):
+    __tablename__ = "schedule_acknowledgments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    week_start: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    acknowledged_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

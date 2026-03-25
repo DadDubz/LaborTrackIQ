@@ -18,6 +18,8 @@ from app.models import (
     ManagerNote,
     Organization,
     ReportSubscription,
+    ScheduleAcknowledgment,
+    SchedulePublicationEvent,
     ScheduleShift,
     TimeEntry,
     TimeOffRequest,
@@ -43,6 +45,9 @@ from app.schemas import (
     QuickBooksConnectRequest,
     QuickBooksExportRequest,
     ReportRecipientCreate,
+    ScheduleAcknowledgmentCreate,
+    ScheduleAcknowledgmentRead,
+    SchedulePublicationRead,
     SchedulePublishRequest,
     SchedulePublishResponse,
     ShiftCreate,
@@ -173,6 +178,21 @@ def load_employee_clock_context(employee_id: int, organization_id: int, db: Sess
 
 def week_end_from_start(week_start: date) -> date:
     return date.fromordinal(week_start.toordinal() + 6)
+
+
+def build_shift_snapshot(shift: ScheduleShift) -> dict:
+    return {
+        "shift_id": shift.id,
+        "employee_id": shift.employee_id,
+        "shift_date": shift.shift_date.isoformat(),
+        "start_at": shift.start_at.isoformat(),
+        "end_at": shift.end_at.isoformat(),
+        "location_name": shift.location_name,
+        "role_label": shift.role_label,
+        "is_published": shift.is_published,
+        "published_at": shift.published_at.isoformat() if shift.published_at else None,
+        "published_by_name": shift.published_by_name,
+    }
 
 
 def serialize_user(user: User) -> UserRead:
@@ -462,6 +482,18 @@ def publish_schedule_week(
         shift.published_at = published_at
         shift.published_by_name = current_user.full_name
 
+    db.add(
+        SchedulePublicationEvent(
+            organization_id=organization_id,
+            week_start=payload.week_start,
+            week_end=week_end,
+            action="published",
+            shift_count=len(shifts),
+            published_by_name=current_user.full_name,
+            snapshot_data=[build_shift_snapshot(shift) for shift in shifts],
+        )
+    )
+
     db.commit()
     return SchedulePublishResponse(
         message="Schedule published successfully.",
@@ -499,6 +531,18 @@ def unpublish_schedule_week(
     for shift in shifts:
         shift.is_published = False
 
+    db.add(
+        SchedulePublicationEvent(
+            organization_id=organization_id,
+            week_start=payload.week_start,
+            week_end=week_end,
+            action="unpublished",
+            shift_count=len(shifts),
+            published_by_name=current_user.full_name,
+            snapshot_data=[build_shift_snapshot(shift) for shift in shifts],
+        )
+    )
+
     db.commit()
     return SchedulePublishResponse(
         message="Schedule unpublished successfully.",
@@ -506,6 +550,86 @@ def unpublish_schedule_week(
         week_end=week_end,
         published_shift_count=len(shifts),
     )
+
+
+@app.get(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/schedule/publications",
+    response_model=list[SchedulePublicationRead],
+)
+def list_schedule_publications(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    events = db.scalars(
+        select(SchedulePublicationEvent)
+        .where(SchedulePublicationEvent.organization_id == organization_id)
+        .order_by(SchedulePublicationEvent.created_at.desc())
+    ).all()
+    acknowledgments = db.scalars(
+        select(ScheduleAcknowledgment).where(ScheduleAcknowledgment.organization_id == organization_id)
+    ).all()
+    ack_counts: dict[date, int] = {}
+    for acknowledgment in acknowledgments:
+        ack_counts[acknowledgment.week_start] = ack_counts.get(acknowledgment.week_start, 0) + 1
+    return [
+        SchedulePublicationRead(
+            id=event.id,
+            organization_id=event.organization_id,
+            week_start=event.week_start,
+            week_end=event.week_end,
+            action=event.action,
+            shift_count=event.shift_count,
+            published_by_name=event.published_by_name,
+            created_at=event.created_at,
+            acknowledged_count=ack_counts.get(event.week_start, 0),
+        )
+        for event in events
+    ]
+
+
+@app.post(f"{settings.api_prefix}/schedule/acknowledgments", response_model=ScheduleAcknowledgmentRead)
+def acknowledge_schedule(
+    payload: ScheduleAcknowledgmentCreate,
+    db: Session = Depends(get_db),
+):
+    employee = get_employee_or_404(payload.employee_id, payload.organization_id, db)
+    acknowledgment = db.scalar(
+        select(ScheduleAcknowledgment).where(
+            and_(
+                ScheduleAcknowledgment.organization_id == payload.organization_id,
+                ScheduleAcknowledgment.employee_id == employee.id,
+                ScheduleAcknowledgment.week_start == payload.week_start,
+            )
+        )
+    )
+    if acknowledgment:
+        acknowledgment.acknowledged_at = datetime.utcnow()
+    else:
+        acknowledgment = ScheduleAcknowledgment(
+            organization_id=payload.organization_id,
+            employee_id=employee.id,
+            week_start=payload.week_start,
+        )
+        db.add(acknowledgment)
+
+    db.commit()
+    db.refresh(acknowledgment)
+    return acknowledgment
+
+
+@app.get(
+    f"{settings.api_prefix}/employees/{{employee_id}}/schedule/acknowledgments",
+    response_model=list[ScheduleAcknowledgmentRead],
+)
+def list_schedule_acknowledgments(employee_id: int, db: Session = Depends(get_db)):
+    acknowledgments = db.scalars(
+        select(ScheduleAcknowledgment)
+        .where(ScheduleAcknowledgment.employee_id == employee_id)
+        .order_by(ScheduleAcknowledgment.acknowledged_at.desc())
+    ).all()
+    return list(acknowledgments)
 
 
 @app.delete(f"{settings.api_prefix}/shifts/{{shift_id}}", response_model=dict)

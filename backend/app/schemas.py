@@ -96,6 +96,34 @@ class SchedulePublishResponse(BaseModel):
     published_shift_count: int
 
 
+class SchedulePublicationRead(BaseModel):
+    id: int
+    organization_id: int
+    week_start: date
+    week_end: date
+    action: str
+    shift_count: int
+    published_by_name: str
+    created_at: datetime
+    acknowledged_count: int = 0
+
+
+class ScheduleAcknowledgmentCreate(BaseModel):
+    organization_id: int
+    employee_id: int
+    week_start: date
+
+
+class ScheduleAcknowledgmentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    organization_id: int
+    employee_id: int
+    week_start: date
+    acknowledged_at: datetime
+
+
 class NoteCreate(BaseModel):
     organization_id: int
     employee_id: Optional[int] = None

@@ -518,6 +518,13 @@ textarea {
   color: var(--miseiq-navy);
 }
 
+.schedule-notice-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .publish-history-card {
   margin-top: 14px;
 }
