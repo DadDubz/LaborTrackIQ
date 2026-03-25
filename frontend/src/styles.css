@@ -509,6 +509,24 @@ textarea {
   color: #6f5324;
 }
 
+.schedule-notice-banner,
+.publish-history-card {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(17, 33, 59, 0.08);
+  color: var(--miseiq-navy);
+}
+
+.publish-history-card {
+  margin-top: 14px;
+}
+
+.publish-history-card p {
+  margin: 4px 0 0;
+  color: #4f5b6d;
+}
+
 .admin-toolbar {
   display: flex;
   align-items: center;

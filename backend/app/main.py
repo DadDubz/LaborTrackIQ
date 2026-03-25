@@ -78,6 +78,8 @@ def ensure_schedule_shift_publish_columns() -> None:
             connection.execute(text("ALTER TABLE schedule_shifts ADD COLUMN is_published BOOLEAN DEFAULT 0"))
         if "published_at" not in columns:
             connection.execute(text("ALTER TABLE schedule_shifts ADD COLUMN published_at DATETIME"))
+        if "published_by_name" not in columns:
+            connection.execute(text("ALTER TABLE schedule_shifts ADD COLUMN published_by_name VARCHAR(180)"))
 
 
 ensure_schedule_shift_publish_columns()
@@ -390,7 +392,7 @@ def create_shift(
     current_user: User = Depends(require_admin_user),
 ):
     validate_organization_access(payload.organization_id, current_user)
-    shift = ScheduleShift(**payload.model_dump(), is_published=False, published_at=None)
+    shift = ScheduleShift(**payload.model_dump(), is_published=False, published_at=None, published_by_name=None)
     db.add(shift)
     db.commit()
     db.refresh(shift)
@@ -425,7 +427,6 @@ def update_shift(
     shift.location_name = payload.location_name
     shift.role_label = payload.role_label
     shift.is_published = False
-    shift.published_at = None
     db.commit()
     db.refresh(shift)
     return shift
@@ -459,10 +460,48 @@ def publish_schedule_week(
     for shift in shifts:
         shift.is_published = True
         shift.published_at = published_at
+        shift.published_by_name = current_user.full_name
 
     db.commit()
     return SchedulePublishResponse(
         message="Schedule published successfully.",
+        week_start=payload.week_start,
+        week_end=week_end,
+        published_shift_count=len(shifts),
+    )
+
+
+@app.post(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/schedule/unpublish",
+    response_model=SchedulePublishResponse,
+)
+def unpublish_schedule_week(
+    organization_id: int,
+    payload: SchedulePublishRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    week_end = week_end_from_start(payload.week_start)
+    shifts = db.scalars(
+        select(ScheduleShift).where(
+            and_(
+                ScheduleShift.organization_id == organization_id,
+                ScheduleShift.shift_date >= payload.week_start,
+                ScheduleShift.shift_date <= week_end,
+                ScheduleShift.is_published.is_(True),
+            )
+        )
+    ).all()
+    if not shifts:
+        raise HTTPException(status_code=404, detail="No published shifts found for the selected week.")
+
+    for shift in shifts:
+        shift.is_published = False
+
+    db.commit()
+    return SchedulePublishResponse(
+        message="Schedule unpublished successfully.",
         week_start=payload.week_start,
         week_end=week_end,
         published_shift_count=len(shifts),
@@ -1174,6 +1213,7 @@ def bootstrap_demo(db: Session = Depends(get_db)):
         for shift in existing_shifts:
             shift.is_published = True
             shift.published_at = shift.published_at or datetime.utcnow()
+            shift.published_by_name = shift.published_by_name or "Alex Owner"
         db.commit()
         return {
             "organization_id": existing_org.id,
@@ -1231,6 +1271,7 @@ def bootstrap_demo(db: Session = Depends(get_db)):
                 role_label="Front Counter",
                 is_published=True,
                 published_at=datetime.utcnow(),
+                published_by_name="Alex Owner",
             ),
             ManagerNote(
                 organization_id=organization.id,

@@ -10,6 +10,7 @@ type Shift = {
   location_name: string | null;
   is_published: boolean;
   published_at: string | null;
+  published_by_name: string | null;
 };
 
 type Note = {
@@ -780,6 +781,19 @@ export default function App() {
     }
   }
 
+  async function handleUnpublishScheduleWeek() {
+    setAdminError("");
+    try {
+      const response = (await apiFetch(`/organizations/${organizationId}/schedule/unpublish`, {
+        method: "POST",
+        body: JSON.stringify({ week_start: scheduleWeekStart }),
+      })) as SchedulePublishResponse;
+      await refreshAdminData(`${response.published_shift_count} published shift(s) moved back to draft for ${formatWeekLabel(scheduleWeekStart)}.`);
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to unpublish schedule.");
+    }
+  }
+
   async function handleMoveShiftToDate(shiftId: number, targetDate: string) {
     const shift = shifts.find((item) => item.id === shiftId);
     if (!shift || shift.shift_date === targetDate) {
@@ -990,6 +1004,9 @@ export default function App() {
   const employeeHomeShifts = employeePortal?.schedule.slice(0, 3) ?? [];
   const employeeNotes = employeePortal?.notes ?? [];
   const scheduleCalendar = buildScheduleCalendar(employeePortal?.schedule ?? []);
+  const employeeLatestPublishedShift = [...(employeePortal?.schedule ?? [])]
+    .filter((shift) => shift.published_at)
+    .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""))[0];
   const employeeOptions = employees.filter((employee) => employee.role === "employee");
   const quickBooksIntegration = integrations.find((integration) => integration.provider === "quickbooks");
   const scheduleWeekDays = Array.from({ length: 7 }, (_, index) => addDays(scheduleWeekStart, index));
@@ -1010,6 +1027,9 @@ export default function App() {
   const weeklyHours = weeklyShifts.reduce((total, shift) => total + getShiftHours(shift), 0);
   const publishedWeeklyShifts = weeklyShifts.filter((shift) => shift.is_published);
   const draftWeeklyShifts = weeklyShifts.filter((shift) => !shift.is_published);
+  const weeklyLatestPublishedShift = [...publishedWeeklyShifts]
+    .filter((shift) => shift.published_at)
+    .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""))[0];
   const weeklyPendingRequests = orgTimeOffRequests.filter(
     (request) =>
       request.status === "pending" && request.start_date <= scheduleWeekEnd && request.end_date >= scheduleWeekStart,
@@ -1220,6 +1240,13 @@ export default function App() {
 
             {employeeError ? <div className="inline-error">{employeeError}</div> : null}
             {requestOffMessage ? <div className="inline-message">{requestOffMessage}</div> : null}
+            {employeeLatestPublishedShift ? (
+              <div className="schedule-notice-banner">
+                Latest published schedule update:{" "}
+                {new Date(employeeLatestPublishedShift.published_at ?? "").toLocaleDateString()} by{" "}
+                {employeeLatestPublishedShift.published_by_name ?? "your manager"}.
+              </div>
+            ) : null}
 
             {employeeTab === "home" ? (
               <div className="employee-grid">
@@ -1457,6 +1484,16 @@ export default function App() {
                         <p>Time Entries</p>
                       </div>
                     </div>
+
+                    {weeklyLatestPublishedShift ? (
+                      <div className="publish-history-card">
+                        <strong>Last published</strong>
+                        <p>
+                          {new Date(weeklyLatestPublishedShift.published_at ?? "").toLocaleString()} by{" "}
+                          {weeklyLatestPublishedShift.published_by_name ?? "an admin"}
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="scroll-list">
                     {setupOverview.checklist.map((item) => (
@@ -1608,6 +1645,9 @@ export default function App() {
                       </button>
                       <button className="primary-button secondary-publish-button" type="button" onClick={() => void handlePublishScheduleWeek()}>
                         Publish Week
+                      </button>
+                      <button className="ghost-button" type="button" onClick={() => void handleUnpublishScheduleWeek()}>
+                        Unpublish Week
                       </button>
                       <button className="ghost-button" type="button" onClick={() => prepareShiftForDate(scheduleWeekStart)}>
                         Add Shift to Monday

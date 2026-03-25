@@ -82,6 +82,7 @@ class ShiftRead(BaseModel):
     role_label: Optional[str]
     is_published: bool
     published_at: Optional[datetime]
+    published_by_name: Optional[str]
 
 
 class SchedulePublishRequest(BaseModel):

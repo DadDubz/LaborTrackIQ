@@ -99,6 +99,7 @@ class ScheduleShift(Base):
     role_label: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    published_by_name: Mapped[Optional[str]] = mapped_column(String(180), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     organization: Mapped["Organization"] = relationship(back_populates="shifts")
