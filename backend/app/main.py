@@ -401,6 +401,13 @@ def normalize_email(email: Optional[str]) -> Optional[str]:
     return normalized or None
 
 
+def normalize_report_type(report_type: str) -> str:
+    normalized = report_type.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="report_type is required.")
+    return normalized
+
+
 def ensure_unique_user_email(
     organization_id: int,
     email: Optional[str],
@@ -1678,7 +1685,32 @@ def create_report_recipient(
     current_user: User = Depends(require_admin_user),
 ):
     validate_organization_access(payload.organization_id, current_user)
-    recipient = ReportSubscription(**payload.model_dump())
+    normalized_email = normalize_email(payload.email)
+    if not normalized_email:
+        raise HTTPException(status_code=400, detail="A valid email is required.")
+    normalized_report_type = normalize_report_type(payload.report_type)
+    existing = db.scalar(
+        select(ReportSubscription).where(
+            and_(
+                ReportSubscription.organization_id == payload.organization_id,
+                ReportSubscription.email == normalized_email,
+                ReportSubscription.report_type == normalized_report_type,
+            )
+        )
+    )
+    if existing and existing.is_active:
+        raise HTTPException(status_code=400, detail="That report recipient already exists for this report.")
+    if existing:
+        existing.is_active = True
+        db.commit()
+        db.refresh(existing)
+        return {"id": existing.id, "message": "Report recipient restored."}
+
+    recipient = ReportSubscription(
+        organization_id=payload.organization_id,
+        email=normalized_email,
+        report_type=normalized_report_type,
+    )
     db.add(recipient)
     db.commit()
     db.refresh(recipient)
@@ -1967,6 +1999,8 @@ def export_integration_labor(
                 TimeEntry.organization_id == integration.organization_id,
                 TimeEntry.clock_in_at >= start_dt,
                 TimeEntry.clock_in_at <= end_dt,
+                TimeEntry.clock_out_at.is_not(None),
+                TimeEntry.approved.is_(True),
             )
         )
     ).all()
@@ -1974,9 +2008,8 @@ def export_integration_labor(
     exported_entries = 0
     exported_hours = 0.0
     for entry in entries:
-        if entry.clock_out_at:
-            exported_entries += 1
-            exported_hours += (entry.clock_out_at - entry.clock_in_at).total_seconds() / 3600
+        exported_entries += 1
+        exported_hours += (entry.clock_out_at - entry.clock_in_at).total_seconds() / 3600
 
     integration.last_synced_at = datetime.utcnow()
     integration.settings = {

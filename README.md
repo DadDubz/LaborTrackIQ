@@ -56,6 +56,16 @@ docs/
 
 QuickBooks setup details live in `docs/quickbooks-setup.md`.
 
+## Smoke Tests
+
+Run the backend smoke suite with:
+
+```bash
+.venv/bin/python -m unittest discover -s backend/tests -p "test_*.py"
+```
+
+The smoke tests cover launch-critical flows like employee self-service auth, duplicate identity protection, report recipient handling, and payroll-only labor export behavior.
+
 ## Suggested Next Steps
 
 1. Add authentication and permissions with JWT or session auth
