@@ -60,10 +60,12 @@ type LoginResponse = {
 };
 
 type DashboardSummary = {
+  organization_id: number;
   active_employees: number;
   currently_clocked_in: number;
   report_recipients: number;
   connected_integrations: number;
+  pending_notifications: number;
 };
 
 type QuickBooksActionResponse = {
@@ -191,6 +193,14 @@ type ShiftChangeRequest = {
   shift_start_at: string;
   shift_end_at: string;
   requester_name: string;
+};
+
+type NotificationItem = {
+  key: string;
+  category: string;
+  title: string;
+  detail: string;
+  created_at: string | null;
 };
 
 type AdminTab = "setup" | "employees" | "schedules" | "notes" | "requests" | "integrations";
@@ -360,6 +370,7 @@ export default function App() {
   const [orgTimeOffRequests, setOrgTimeOffRequests] = useState<TimeOffRequest[]>([]);
   const [orgAvailabilityRequests, setOrgAvailabilityRequests] = useState<AvailabilityRequest[]>([]);
   const [orgShiftChangeRequests, setOrgShiftChangeRequests] = useState<ShiftChangeRequest[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [coverageTargets, setCoverageTargets] = useState<CoverageTarget[]>([]);
   const [schedulePublications, setSchedulePublications] = useState<SchedulePublication[]>([]);
   const [adminTab, setAdminTab] = useState<AdminTab>("setup");
@@ -434,6 +445,7 @@ export default function App() {
     request_type: "pickup" as ShiftChangeRequest["request_type"],
     note: "",
   });
+  const [pickupBoard, setPickupBoard] = useState<ShiftChangeRequest[]>([]);
   const [shiftChangeReviewForm, setShiftChangeReviewForm] = useState({
     id: null as number | null,
     status: "pending",
@@ -503,7 +515,7 @@ export default function App() {
 
   async function loadAdminData(accessToken: string, orgId: string) {
     try {
-      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData, publicationData, availabilityData, coverageData, shiftChangeData] = await Promise.all([
+      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData, publicationData, availabilityData, coverageData, shiftChangeData, notificationData] = await Promise.all([
         apiFetch(`/organizations/${orgId}/dashboard-summary`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/users`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/shifts`, {}, accessToken),
@@ -515,6 +527,7 @@ export default function App() {
         apiFetch(`/organizations/${orgId}/availability-requests`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/coverage-targets`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/shift-change-requests`, {}, accessToken),
+        apiFetch(`/organizations/${orgId}/notifications`, {}, accessToken),
       ]);
       const quickBooksConfigData = (await apiFetch(
         `/organizations/${orgId}/integrations/quickbooks/config-status`,
@@ -533,6 +546,7 @@ export default function App() {
       setOrgAvailabilityRequests(availabilityData as AvailabilityRequest[]);
       setCoverageTargets(coverageData as CoverageTarget[]);
       setOrgShiftChangeRequests(shiftChangeData as ShiftChangeRequest[]);
+      setNotifications(notificationData as NotificationItem[]);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "Unable to load admin data.");
     }
@@ -572,6 +586,15 @@ export default function App() {
       setEmployeeShiftChangeRequests(data);
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to load shift change requests.");
+    }
+  }
+
+  async function loadPickupBoard(employeeId: number) {
+    try {
+      const data = (await apiFetch(`/employees/${employeeId}/pickup-board`, {}, "")) as ShiftChangeRequest[];
+      setPickupBoard(data);
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Unable to load pickup board.");
     }
   }
 
@@ -746,6 +769,7 @@ export default function App() {
       await loadEmployeeRequests(data.employee_id);
       await loadEmployeeAvailabilityRequests(data.employee_id);
       await loadEmployeeShiftChangeRequests(data.employee_id);
+      await loadPickupBoard(data.employee_id);
       await loadEmployeeScheduleAcknowledgments(data.employee_id);
       if (token) {
         await loadAdminData(token, organizationId);
@@ -765,6 +789,7 @@ export default function App() {
     setEmployeeRequests([]);
     setEmployeeAvailabilityRequests([]);
     setEmployeeShiftChangeRequests([]);
+    setPickupBoard([]);
     setEmployeeScheduleAcknowledgments([]);
     setPinCode("");
     setActiveKeypadField("employee");
@@ -884,11 +909,37 @@ export default function App() {
       setRequestOffMessage("Shift change request sent for manager review.");
       setShiftChangeForm({ shift_id: "", request_type: "pickup", note: "" });
       await loadEmployeeShiftChangeRequests(employeePortal.employee_id);
+      await loadPickupBoard(employeePortal.employee_id);
       if (token) {
         await loadAdminData(token, organizationId);
       }
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to submit shift change request.");
+    }
+  }
+
+  async function handleClaimPickupRequest(requestId: number) {
+    if (!employeePortal) {
+      return;
+    }
+    setEmployeeError("");
+    try {
+      await apiFetch(
+        `/shift-change-requests/${requestId}/claim`,
+        {
+          method: "POST",
+          body: JSON.stringify({ employee_id: employeePortal.employee_id }),
+        },
+        "",
+      );
+      setRequestOffMessage("Pickup interest sent to the manager for approval.");
+      await loadPickupBoard(employeePortal.employee_id);
+      await loadEmployeeShiftChangeRequests(employeePortal.employee_id);
+      if (token) {
+        await loadAdminData(token, organizationId);
+      }
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Unable to claim pickup request.");
     }
   }
 
@@ -2005,6 +2056,45 @@ export default function App() {
                     <div className="empty-state">No shift change requests yet.</div>
                   )}
                 </div>
+                <div className="scroll-list">
+                  <div className="panel-heading">
+                    <p className="eyebrow">Pickup Board</p>
+                    <h4>Open Shifts You Can Claim</h4>
+                  </div>
+                  {pickupBoard.length > 0 ? (
+                    pickupBoard.map((request) => {
+                      const shiftWindow = formatShiftWindow({
+                        id: request.shift_id,
+                        employee_id: request.requester_employee_id,
+                        shift_date: request.shift_date,
+                        start_at: request.shift_start_at,
+                        end_at: request.shift_end_at,
+                        role_label: null,
+                        location_name: null,
+                        is_published: true,
+                        published_at: null,
+                        published_by_name: null,
+                      });
+                      return (
+                        <div className="entity-card" key={`pickup-${request.id}`}>
+                          <strong>{request.requester_name} needs coverage</strong>
+                          <p>{shiftWindow.day}</p>
+                          <p>{shiftWindow.time}</p>
+                          <p>{request.note}</p>
+                          {request.replacement_employee_name ? (
+                            <p>Claimed by: {request.replacement_employee_name}</p>
+                          ) : (
+                            <button className="primary-button" type="button" onClick={() => void handleClaimPickupRequest(request.id)}>
+                              I Can Take This
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="empty-state">No open pickup requests right now.</div>
+                  )}
+                </div>
               </div>
             ) : null}
           </div>
@@ -2089,6 +2179,10 @@ export default function App() {
                   <span>{summary.connected_integrations}</span>
                   <p>Connected Apps</p>
                 </div>
+                <div className="metric">
+                  <span>{summary.pending_notifications}</span>
+                  <p>Needs Review</p>
+                </div>
               </div>
 
               {adminTab === "setup" && setupOverview ? (
@@ -2132,6 +2226,20 @@ export default function App() {
                         </p>
                       </div>
                     ) : null}
+                    <div className="schedule-sidebar-list">
+                      <strong>Notification Center</strong>
+                      {notifications.length > 0 ? (
+                        notifications.map((item) => (
+                          <div className="entity-card" key={item.key}>
+                            <strong>{item.title}</strong>
+                            <p>{item.detail}</p>
+                            {item.created_at ? <p>{new Date(item.created_at).toLocaleString()}</p> : null}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="empty-state">Everything is caught up right now.</div>
+                      )}
+                    </div>
                   </div>
                   <div className="scroll-list">
                     {setupOverview.checklist.map((item) => (

@@ -25,7 +25,10 @@ from app.models import (
     ScheduleShift,
     ShiftChangeRequest,
     ShiftChangeStatus,
+    ShiftChangeType,
     TimeEntry,
+    TimeOffStatus,
+    AvailabilityStatus,
     TimeOffRequest,
     User,
     UserRole,
@@ -61,12 +64,14 @@ from app.schemas import (
     SchedulePublishRequest,
     SchedulePublishResponse,
     ScheduleRestoreResponse,
+    ShiftChangeClaimCreate,
     ShiftChangeRequestCreate,
     ShiftChangeRequestRead,
     ShiftChangeRequestUpdate,
     ShiftCreate,
     ShiftRead,
     ShiftUpdate,
+    NotificationRead,
     SetupChecklistItem,
     SetupOverview,
     TimeEntryRead,
@@ -213,6 +218,10 @@ def weekday_for_schedule(value: date) -> int:
     return (value.weekday() + 1) % 7
 
 
+def weekday_label(value: int) -> str:
+    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][value] if 0 <= value <= 6 else "Day"
+
+
 def build_coverage_shortages(
     shifts: list[ScheduleShift],
     coverage_targets: list[ScheduleCoverageTarget],
@@ -350,6 +359,70 @@ def serialize_shift_change_request(request: ShiftChangeRequest, db: Session) -> 
         requester_name=requester.full_name,
         replacement_employee_name=replacement.full_name if replacement else None,
     )
+
+
+def build_admin_notifications(organization_id: int, db: Session) -> list[NotificationRead]:
+    notifications: list[NotificationRead] = []
+
+    pending_time_off = db.scalars(
+        select(TimeOffRequest)
+        .where(and_(TimeOffRequest.organization_id == organization_id, TimeOffRequest.status == TimeOffStatus.PENDING))
+        .order_by(TimeOffRequest.created_at.desc())
+        .limit(5)
+    ).all()
+    for request in pending_time_off:
+        employee = db.get(User, request.employee_id)
+        notifications.append(
+            NotificationRead(
+                key=f"time-off-{request.id}",
+                category="time_off",
+                title=f"Time-off request from {employee.full_name if employee else f'Employee {request.employee_id}'}",
+                detail=f"{request.start_date.isoformat()} to {request.end_date.isoformat()}",
+                created_at=request.created_at,
+            )
+        )
+
+    pending_availability = db.scalars(
+        select(EmployeeAvailabilityRequest)
+        .where(
+            and_(
+                EmployeeAvailabilityRequest.organization_id == organization_id,
+                EmployeeAvailabilityRequest.status == AvailabilityStatus.PENDING,
+            )
+        )
+        .order_by(EmployeeAvailabilityRequest.created_at.desc())
+        .limit(5)
+    ).all()
+    for request in pending_availability:
+        employee = db.get(User, request.employee_id)
+        notifications.append(
+            NotificationRead(
+                key=f"availability-{request.id}",
+                category="availability",
+                title=f"Availability request from {employee.full_name if employee else f'Employee {request.employee_id}'}",
+                detail=f"{weekday_label(request.weekday)} {request.start_time}-{request.end_time}",
+                created_at=request.created_at,
+            )
+        )
+
+    pending_shift_changes = db.scalars(
+        select(ShiftChangeRequest)
+        .where(and_(ShiftChangeRequest.organization_id == organization_id, ShiftChangeRequest.status == ShiftChangeStatus.PENDING))
+        .order_by(ShiftChangeRequest.created_at.desc())
+        .limit(5)
+    ).all()
+    for request in pending_shift_changes:
+        notifications.append(
+            NotificationRead(
+                key=f"shift-change-{request.id}",
+                category="shift_change",
+                title=f"{request.request_type.value.title()} request from {serialize_shift_change_request(request, db).requester_name}",
+                detail=request.note,
+                created_at=request.created_at,
+            )
+        )
+
+    return sorted(notifications, key=lambda item: item.created_at or datetime.min, reverse=True)[:8]
 
 
 @app.get("/health")
@@ -867,6 +940,26 @@ def list_employee_shift_change_requests(employee_id: int, db: Session = Depends(
     return [serialize_shift_change_request(request, db) for request in requests]
 
 
+@app.get(f"{settings.api_prefix}/employees/{{employee_id}}/pickup-board", response_model=list[ShiftChangeRequestRead])
+def list_employee_pickup_board(employee_id: int, db: Session = Depends(get_db)):
+    employee = db.get(User, employee_id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found.")
+    requests = db.scalars(
+        select(ShiftChangeRequest)
+        .where(
+            and_(
+                ShiftChangeRequest.organization_id == employee.organization_id,
+                ShiftChangeRequest.request_type == ShiftChangeType.PICKUP,
+                ShiftChangeRequest.status == ShiftChangeStatus.PENDING,
+                ShiftChangeRequest.requester_employee_id != employee_id,
+            )
+        )
+        .order_by(ShiftChangeRequest.created_at.desc())
+    ).all()
+    return [serialize_shift_change_request(request, db) for request in requests]
+
+
 @app.get(
     f"{settings.api_prefix}/employees/{{employee_id}}/availability-requests",
     response_model=list[AvailabilityRequestRead],
@@ -920,6 +1013,23 @@ def create_shift_change_request(payload: ShiftChangeRequestCreate, db: Session =
 
     request = ShiftChangeRequest(**payload.model_dump())
     db.add(request)
+    db.commit()
+    db.refresh(request)
+    return serialize_shift_change_request(request, db)
+
+
+@app.post(f"{settings.api_prefix}/shift-change-requests/{{request_id}}/claim", response_model=ShiftChangeRequestRead)
+def claim_shift_change_request(request_id: int, payload: ShiftChangeClaimCreate, db: Session = Depends(get_db)):
+    request = db.get(ShiftChangeRequest, request_id)
+    if not request:
+        raise HTTPException(status_code=404, detail="Shift change request not found.")
+    if request.status != ShiftChangeStatus.PENDING or request.request_type != ShiftChangeType.PICKUP:
+        raise HTTPException(status_code=400, detail="This shift is not open for pickup.")
+    claimant = get_employee_or_404(payload.employee_id, request.organization_id, db)
+    if claimant.id == request.requester_employee_id:
+        raise HTTPException(status_code=400, detail="You cannot claim your own shift.")
+    request.replacement_employee_id = claimant.id
+    request.manager_response = f"{claimant.full_name} offered to pick up this shift."
     db.commit()
     db.refresh(request)
     return serialize_shift_change_request(request, db)
@@ -1577,6 +1687,7 @@ def get_dashboard_summary(
             )
         )
     ) or 0
+    pending_notifications = len(build_admin_notifications(organization_id, db))
 
     return DashboardSummary(
         organization_id=organization_id,
@@ -1584,7 +1695,18 @@ def get_dashboard_summary(
         currently_clocked_in=currently_clocked_in,
         report_recipients=report_recipients,
         connected_integrations=connected_integrations,
+        pending_notifications=pending_notifications,
     )
+
+
+@app.get(f"{settings.api_prefix}/organizations/{{organization_id}}/notifications", response_model=list[NotificationRead])
+def get_admin_notifications(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    return build_admin_notifications(organization_id, db)
 
 
 @app.get(f"{settings.api_prefix}/organizations/{{organization_id}}/setup-overview", response_model=SetupOverview)

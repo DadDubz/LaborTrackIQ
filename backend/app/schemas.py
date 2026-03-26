@@ -187,6 +187,10 @@ class ShiftChangeRequestUpdate(BaseModel):
     replacement_employee_id: Optional[int] = None
 
 
+class ShiftChangeClaimCreate(BaseModel):
+    employee_id: int
+
+
 class ShiftChangeRequestRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -368,6 +372,15 @@ class DashboardSummary(BaseModel):
     currently_clocked_in: int
     report_recipients: int
     connected_integrations: int
+    pending_notifications: int
+
+
+class NotificationRead(BaseModel):
+    key: str
+    category: str
+    title: str
+    detail: str
+    created_at: Optional[datetime] = None
 
 
 class SetupChecklistItem(BaseModel):
