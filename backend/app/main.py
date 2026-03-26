@@ -59,6 +59,7 @@ from app.schemas import (
     QuickBooksConnectRequest,
     QuickBooksExportRequest,
     ReportRecipientCreate,
+    ReportRecipientRead,
     ScheduleAcknowledgmentCreate,
     ScheduleAcknowledgmentRead,
     SchedulePublicationCommentUpdate,
@@ -77,6 +78,7 @@ from app.schemas import (
     SetupChecklistItem,
     SetupOverview,
     TimeEntryRead,
+    TimeEntryUpdate,
     TimeOffRequestCreate,
     TimeOffRequestRead,
     TimeOffRequestUpdate,
@@ -472,6 +474,32 @@ def build_admin_notifications(organization_id: int, db: Session) -> list[Notific
                 created_at=request.created_at,
                 target_tab="requests",
                 target_id=request.id,
+            )
+        )
+
+    pending_time_entries = db.scalars(
+        select(TimeEntry)
+        .where(
+            and_(
+                TimeEntry.organization_id == organization_id,
+                TimeEntry.clock_out_at.is_not(None),
+                TimeEntry.approved.is_(False),
+            )
+        )
+        .order_by(TimeEntry.clock_in_at.desc())
+        .limit(5)
+    ).all()
+    for entry in pending_time_entries:
+        employee = db.get(User, entry.employee_id)
+        notifications.append(
+            NotificationRead(
+                key=f"time-entry-{entry.id}",
+                category="time_entry",
+                title=f"Timesheet review for {employee.full_name if employee else f'Employee {entry.employee_id}'}",
+                detail=f"Clocked {entry.clock_in_at.isoformat()} to {entry.clock_out_at.isoformat() if entry.clock_out_at else 'open'}",
+                created_at=entry.clock_out_at or entry.clock_in_at,
+                target_tab="timesheets",
+                target_id=entry.id,
             )
         )
 
@@ -1427,6 +1455,43 @@ def clock_in_out(payload: ClockAction, db: Session = Depends(get_db)):
     )
 
 
+@app.get(f"{settings.api_prefix}/organizations/{{organization_id}}/time-entries", response_model=list[TimeEntryRead])
+def list_time_entries(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    entries = db.scalars(
+        select(TimeEntry)
+        .where(TimeEntry.organization_id == organization_id)
+        .order_by(TimeEntry.clock_in_at.desc())
+    ).all()
+    return [TimeEntryRead.model_validate(entry) for entry in entries]
+
+
+@app.put(f"{settings.api_prefix}/time-entries/{{entry_id}}", response_model=TimeEntryRead)
+def update_time_entry(
+    entry_id: int,
+    payload: TimeEntryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    entry = db.get(TimeEntry, entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Time entry not found.")
+    validate_organization_access(entry.organization_id, current_user)
+    if payload.clock_out_at and payload.clock_out_at <= entry.clock_in_at:
+        raise HTTPException(status_code=400, detail="clock_out_at must be after clock_in_at.")
+    entry.approved = payload.approved
+    entry.notes = payload.notes
+    if payload.clock_out_at is not None:
+        entry.clock_out_at = payload.clock_out_at
+    db.commit()
+    db.refresh(entry)
+    return TimeEntryRead.model_validate(entry)
+
+
 @app.post(f"{settings.api_prefix}/report-recipients", response_model=dict)
 def create_report_recipient(
     payload: ReportRecipientCreate,
@@ -1439,6 +1504,36 @@ def create_report_recipient(
     db.commit()
     db.refresh(recipient)
     return {"id": recipient.id, "message": "Report recipient added."}
+
+
+@app.get(f"{settings.api_prefix}/organizations/{{organization_id}}/report-recipients", response_model=list[ReportRecipientRead])
+def list_report_recipients(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    recipients = db.scalars(
+        select(ReportSubscription)
+        .where(ReportSubscription.organization_id == organization_id)
+        .order_by(ReportSubscription.created_at.desc())
+    ).all()
+    return [ReportRecipientRead.model_validate(recipient) for recipient in recipients]
+
+
+@app.delete(f"{settings.api_prefix}/report-recipients/{{recipient_id}}", response_model=dict)
+def delete_report_recipient(
+    recipient_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    recipient = db.get(ReportSubscription, recipient_id)
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Report recipient not found.")
+    validate_organization_access(recipient.organization_id, current_user)
+    recipient.is_active = False
+    db.commit()
+    return {"message": "Report recipient archived."}
 
 
 @app.post(f"{settings.api_prefix}/integrations", response_model=IntegrationConnectionRead)

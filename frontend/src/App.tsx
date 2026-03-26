@@ -208,6 +208,27 @@ type NotificationItem = {
   target_id: number | null;
 };
 
+type TimeEntry = {
+  id: number;
+  organization_id: number;
+  employee_id: number;
+  clock_in_at: string;
+  clock_out_at: string | null;
+  clock_in_source: string;
+  clock_out_source: string | null;
+  notes: string | null;
+  approved: boolean;
+};
+
+type ReportRecipient = {
+  id: number;
+  organization_id: number;
+  email: string;
+  report_type: string;
+  is_active: boolean;
+  created_at: string;
+};
+
 type EmployeeSelfProfile = {
   employee_id: number;
   full_name: string;
@@ -217,7 +238,7 @@ type EmployeeSelfProfile = {
   preferred_shift_notes: string | null;
 };
 
-type AdminTab = "setup" | "employees" | "schedules" | "notes" | "requests" | "integrations";
+type AdminTab = "setup" | "employees" | "schedules" | "notes" | "requests" | "timesheets" | "integrations";
 type EmployeeTab = "home" | "schedule" | "request_off" | "availability" | "shift_changes" | "profile";
 type KeypadField = "employee" | "pin";
 type RequestQueueTab = "pending" | "approved";
@@ -393,6 +414,8 @@ export default function App() {
   const [orgTimeOffRequests, setOrgTimeOffRequests] = useState<TimeOffRequest[]>([]);
   const [orgAvailabilityRequests, setOrgAvailabilityRequests] = useState<AvailabilityRequest[]>([]);
   const [orgShiftChangeRequests, setOrgShiftChangeRequests] = useState<ShiftChangeRequest[]>([]);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+  const [reportRecipients, setReportRecipients] = useState<ReportRecipient[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [coverageTargets, setCoverageTargets] = useState<CoverageTarget[]>([]);
   const [schedulePublications, setSchedulePublications] = useState<SchedulePublication[]>([]);
@@ -448,6 +471,10 @@ export default function App() {
     manager_response: "",
   });
   const [requestQueueTab, setRequestQueueTab] = useState<RequestQueueTab>("pending");
+  const [reportRecipientForm, setReportRecipientForm] = useState({
+    email: "",
+    report_type: "daily_labor_summary",
+  });
   const [requestBoardTab, setRequestBoardTab] = useState<RequestBoardTab>("time_off");
   const [draggingShiftId, setDraggingShiftId] = useState<number | null>(null);
   const [dragTargetDate, setDragTargetDate] = useState<string | null>(null);
@@ -474,6 +501,12 @@ export default function App() {
     status: "pending",
     manager_response: "",
     replacement_employee_id: "",
+  });
+  const [timeEntryReviewForm, setTimeEntryReviewForm] = useState({
+    id: null as number | null,
+    approved: false,
+    notes: "",
+    clock_out_at: "",
   });
 
   useEffect(() => {
@@ -538,7 +571,7 @@ export default function App() {
 
   async function loadAdminData(accessToken: string, orgId: string) {
     try {
-      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData, publicationData, availabilityData, coverageData, shiftChangeData, notificationData] = await Promise.all([
+      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData, publicationData, availabilityData, coverageData, shiftChangeData, notificationData, timeEntryData, recipientData] = await Promise.all([
         apiFetch(`/organizations/${orgId}/dashboard-summary`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/users`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/shifts`, {}, accessToken),
@@ -551,6 +584,8 @@ export default function App() {
         apiFetch(`/organizations/${orgId}/coverage-targets`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/shift-change-requests`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/notifications`, {}, accessToken),
+        apiFetch(`/organizations/${orgId}/time-entries`, {}, accessToken),
+        apiFetch(`/organizations/${orgId}/report-recipients`, {}, accessToken),
       ]);
       const quickBooksConfigData = (await apiFetch(
         `/organizations/${orgId}/integrations/quickbooks/config-status`,
@@ -570,6 +605,8 @@ export default function App() {
       setCoverageTargets(coverageData as CoverageTarget[]);
       setOrgShiftChangeRequests(shiftChangeData as ShiftChangeRequest[]);
       setNotifications(notificationData as NotificationItem[]);
+      setTimeEntries(timeEntryData as TimeEntry[]);
+      setReportRecipients(recipientData as ReportRecipient[]);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "Unable to load admin data.");
     }
@@ -1548,6 +1585,59 @@ export default function App() {
     }
   }
 
+  async function handleReviewTimeEntry(event: FormEvent) {
+    event.preventDefault();
+    if (!timeEntryReviewForm.id) {
+      return;
+    }
+    setAdminError("");
+    try {
+      await apiFetch(`/time-entries/${timeEntryReviewForm.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          approved: timeEntryReviewForm.approved,
+          notes: timeEntryReviewForm.notes || null,
+          clock_out_at: timeEntryReviewForm.clock_out_at || null,
+        }),
+      });
+      await refreshAdminData("Time entry updated.");
+      setTimeEntryReviewForm({ id: null, approved: false, notes: "", clock_out_at: "" });
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to update time entry.");
+    }
+  }
+
+  async function handleSubmitReportRecipient(event: FormEvent) {
+    event.preventDefault();
+    setAdminError("");
+    try {
+      await apiFetch("/report-recipients", {
+        method: "POST",
+        body: JSON.stringify({
+          organization_id: Number(organizationId),
+          email: reportRecipientForm.email,
+          report_type: reportRecipientForm.report_type,
+        }),
+      });
+      setReportRecipientForm({ email: "", report_type: "daily_labor_summary" });
+      await refreshAdminData("Report recipient added.");
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to add report recipient.");
+    }
+  }
+
+  async function handleArchiveReportRecipient(recipientId: number) {
+    setAdminError("");
+    try {
+      await apiFetch(`/report-recipients/${recipientId}`, {
+        method: "DELETE",
+      });
+      await refreshAdminData("Report recipient archived.");
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to archive report recipient.");
+    }
+  }
+
   const employeeHomeShifts = employeePortal?.schedule.slice(0, 3) ?? [];
   const employeeNotes = employeePortal?.notes ?? [];
   const scheduleCalendar = buildScheduleCalendar(employeePortal?.schedule ?? []);
@@ -1732,6 +1822,8 @@ export default function App() {
   const pendingShiftChangeRequests = orgShiftChangeRequests.filter((request) => request.status === "pending");
   const approvedShiftChangeRequests = orgShiftChangeRequests.filter((request) => request.status === "approved");
   const visibleShiftChangeRequests = requestQueueTab === "pending" ? pendingShiftChangeRequests : approvedShiftChangeRequests;
+  const pendingTimeEntries = timeEntries.filter((entry) => !entry.approved);
+  const approvedTimeEntries = timeEntries.filter((entry) => entry.approved);
   const pendingAvailabilityRequests = orgAvailabilityRequests.filter((request) => request.status === "pending");
   const recentSchedulePublications = schedulePublications.slice(0, 6);
 
@@ -1778,6 +1870,21 @@ export default function App() {
             status: request.status,
             manager_response: request.manager_response ?? "",
             replacement_employee_id: request.replacement_employee_id ? String(request.replacement_employee_id) : "",
+          });
+        }
+      }
+      return;
+    }
+    if (item.category === "time_entry") {
+      setAdminTab("timesheets");
+      if (item.target_id) {
+        const entry = timeEntries.find((record) => record.id === item.target_id);
+        if (entry) {
+          setTimeEntryReviewForm({
+            id: entry.id,
+            approved: entry.approved,
+            notes: entry.notes ?? "",
+            clock_out_at: entry.clock_out_at ? new Date(entry.clock_out_at).toISOString().slice(0, 16) : "",
           });
         }
       }
@@ -2336,7 +2443,7 @@ export default function App() {
                 </button>
               </div>
               <div className="tab-row">
-                {(["setup", "employees", "schedules", "notes", "requests", "integrations"] as AdminTab[]).map((tab) => (
+                {(["setup", "employees", "schedules", "notes", "requests", "timesheets", "integrations"] as AdminTab[]).map((tab) => (
                   <button
                     key={tab}
                     className={adminTab === tab ? "tab active-tab" : "tab"}
@@ -2408,6 +2515,10 @@ export default function App() {
                         <span>{setupOverview.time_entry_count}</span>
                         <p>Time Entries</p>
                       </div>
+                      <div className="metric">
+                        <span>{reportRecipients.filter((recipient) => recipient.is_active).length}</span>
+                        <p>Active Recipients</p>
+                      </div>
                     </div>
 
                     {weeklyLatestPublishedShift ? (
@@ -2433,6 +2544,43 @@ export default function App() {
                         <div className="empty-state">Everything is caught up right now.</div>
                       )}
                     </div>
+                    <form className="schedule-sidebar-list" onSubmit={handleSubmitReportRecipient}>
+                      <strong>Report Recipients</strong>
+                      <input
+                        placeholder="Email address"
+                        value={reportRecipientForm.email}
+                        onChange={(event) => setReportRecipientForm({ ...reportRecipientForm, email: event.target.value })}
+                      />
+                      <select
+                        value={reportRecipientForm.report_type}
+                        onChange={(event) => setReportRecipientForm({ ...reportRecipientForm, report_type: event.target.value })}
+                      >
+                        <option value="daily_labor_summary">Daily Labor Summary</option>
+                        <option value="missed_punch_report">Missed Punch Report</option>
+                        <option value="payroll_export">Payroll Export</option>
+                      </select>
+                      <button className="primary-button" type="submit">
+                        Add Recipient
+                      </button>
+                      {reportRecipients.length > 0 ? (
+                        <div className="target-list">
+                          {reportRecipients.map((recipient) => (
+                            <div className="target-card" key={recipient.id}>
+                              <strong>{recipient.email}</strong>
+                              <p>{recipient.report_type}</p>
+                              <p>{recipient.is_active ? "Active" : "Archived"}</p>
+                              {recipient.is_active ? (
+                                <button className="ghost-button mini-action-button" type="button" onClick={() => void handleArchiveReportRecipient(recipient.id)}>
+                                  Archive
+                                </button>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="empty-state">No report recipients added yet.</div>
+                      )}
+                    </form>
                   </div>
                   <div className="scroll-list">
                     {setupOverview.checklist.map((item) => (
@@ -3268,6 +3416,106 @@ export default function App() {
                       </div>
                     </form>
                   )}
+                </div>
+              ) : null}
+
+              {adminTab === "timesheets" ? (
+                <div className="admin-section request-review-section">
+                  <div className="request-review-rail">
+                    <div className="panel request-overview-panel">
+                      <div className="section-heading">
+                        <div>
+                          <p className="eyebrow">Payroll Review</p>
+                          <h3>Timesheet Queue</h3>
+                        </div>
+                        <p className="muted-copy">Approve completed labor entries before payroll export and fix missing details when needed.</p>
+                      </div>
+                      <div className="metric-grid compact-grid">
+                        <div className="metric">
+                          <span>{pendingTimeEntries.length}</span>
+                          <p>Pending Review</p>
+                        </div>
+                        <div className="metric">
+                          <span>{approvedTimeEntries.length}</span>
+                          <p>Approved</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="scroll-list request-list">
+                      {(pendingTimeEntries.length > 0 ? pendingTimeEntries : approvedTimeEntries).length > 0 ? (
+                        (pendingTimeEntries.length > 0 ? pendingTimeEntries : approvedTimeEntries).map((entry) => {
+                          const employee = employeeOptions.find((item) => item.id === entry.employee_id);
+                          const clockIn = new Date(entry.clock_in_at);
+                          const clockOut = entry.clock_out_at ? new Date(entry.clock_out_at) : null;
+                          const hours = clockOut ? (clockOut.getTime() - clockIn.getTime()) / 36e5 : null;
+                          return (
+                            <button
+                              className="entity-card entity-button request-card"
+                              key={entry.id}
+                              type="button"
+                              onClick={() =>
+                                setTimeEntryReviewForm({
+                                  id: entry.id,
+                                  approved: entry.approved,
+                                  notes: entry.notes ?? "",
+                                  clock_out_at: entry.clock_out_at ? new Date(entry.clock_out_at).toISOString().slice(0, 16) : "",
+                                })
+                              }
+                            >
+                              <div className="request-card-header">
+                                <strong>{employee?.full_name ?? `Employee ${entry.employee_id}`}</strong>
+                                <span className={entry.approved ? "publish-pill published-pill" : "publish-pill draft-pill"}>
+                                  {entry.approved ? "Approved" : "Pending"}
+                                </span>
+                              </div>
+                              <p>In: {clockIn.toLocaleString()}</p>
+                              <p>{clockOut ? `Out: ${clockOut.toLocaleString()}` : "Still clocked in"}</p>
+                              <p>{hours !== null ? `${hours.toFixed(2)} hours` : "Open shift"}</p>
+                              {entry.notes ? <p>Notes: {entry.notes}</p> : null}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="empty-state">No timesheet entries need review right now.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <form className="stack-form" onSubmit={handleReviewTimeEntry}>
+                    <h4>{timeEntryReviewForm.id ? "Review Selected Time Entry" : "Select a Time Entry"}</h4>
+                    <p className="muted-copy">Approve the entry, add payroll notes, or enter a missing clock-out time before saving.</p>
+                    <label className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={timeEntryReviewForm.approved}
+                        onChange={(event) => setTimeEntryReviewForm({ ...timeEntryReviewForm, approved: event.target.checked })}
+                      />
+                      Approved for payroll
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={timeEntryReviewForm.clock_out_at}
+                      onChange={(event) => setTimeEntryReviewForm({ ...timeEntryReviewForm, clock_out_at: event.target.value })}
+                    />
+                    <textarea
+                      placeholder="Optional payroll or manager notes"
+                      value={timeEntryReviewForm.notes}
+                      onChange={(event) => setTimeEntryReviewForm({ ...timeEntryReviewForm, notes: event.target.value })}
+                    />
+                    <div className="action-row">
+                      <button className="primary-button" type="submit" disabled={!timeEntryReviewForm.id}>
+                        Save Review
+                      </button>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={() => setTimeEntryReviewForm({ id: null, approved: false, notes: "", clock_out_at: "" })}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </form>
                 </div>
               ) : null}
 

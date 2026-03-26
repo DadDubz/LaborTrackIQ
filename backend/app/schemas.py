@@ -303,10 +303,27 @@ class TimeEntryRead(BaseModel):
     approved: bool
 
 
+class TimeEntryUpdate(BaseModel):
+    approved: bool
+    notes: Optional[str] = None
+    clock_out_at: Optional[datetime] = None
+
+
 class ReportRecipientCreate(BaseModel):
     organization_id: int
     email: EmailStr
     report_type: str
+
+
+class ReportRecipientRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    organization_id: int
+    email: str
+    report_type: str
+    is_active: bool
+    created_at: datetime
 
 
 class IntegrationConnectionCreate(BaseModel):
