@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from typing import List
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -10,6 +11,19 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 load_dotenv(ROOT_DIR / ".env")
 load_dotenv(BACKEND_DIR / ".env")
+
+
+def _parse_bool(value: str, default: bool) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_csv(value: str, default: List[str]) -> List[str]:
+    if not value:
+        return default
+    parts = [item.strip() for item in value.split(",")]
+    return [item for item in parts if item]
 
 
 class Settings(BaseModel):
@@ -25,6 +39,11 @@ class Settings(BaseModel):
     )
     quickbooks_environment: str = os.getenv("QUICKBOOKS_ENVIRONMENT", "sandbox")
     quickbooks_scopes: str = os.getenv("QUICKBOOKS_SCOPES", "com.intuit.quickbooks.accounting")
+    allow_demo_bootstrap: bool = _parse_bool(os.getenv("ALLOW_DEMO_BOOTSTRAP"), True)
+    cors_origins: List[str] = _parse_csv(
+        os.getenv("CORS_ORIGINS"),
+        ["http://127.0.0.1:5173", "http://localhost:5173"],
+    )
 
 
 settings = Settings()

@@ -134,7 +134,7 @@ app = FastAPI(title=settings.app_name)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1896,31 +1896,42 @@ def quickbooks_callback(
     if not integration or (integration.settings or {}).get("oauth_state") != state:
         raise HTTPException(status_code=400, detail="QuickBooks OAuth state is invalid or expired.")
 
-    tokens = exchange_code_for_tokens(code)
-    integration.status = IntegrationStatus.CONNECTED
-    integration.credentials_ref = seal_secret(
-        {
-            "access_token": tokens["access_token"],
-            "refresh_token": tokens.get("refresh_token"),
-            "expires_at": token_expiry(tokens.get("expires_in", 3600)),
-            "refresh_expires_at": token_expiry(tokens.get("x_refresh_token_expires_in", 86400)),
+    try:
+        tokens = exchange_code_for_tokens(code)
+        integration.status = IntegrationStatus.CONNECTED
+        integration.credentials_ref = seal_secret(
+            {
+                "access_token": tokens["access_token"],
+                "refresh_token": tokens.get("refresh_token"),
+                "expires_at": token_expiry(tokens.get("expires_in", 3600)),
+                "refresh_expires_at": token_expiry(tokens.get("x_refresh_token_expires_in", 86400)),
+            }
+        )
+        integration.last_synced_at = datetime.utcnow()
+        integration.settings = {
+            **(integration.settings or {}),
+            "realm_id": realmId or (integration.settings or {}).get("realm_id"),
+            "company_name": (integration.settings or {}).get("company_name", "QuickBooks Company"),
+            "oauth_state": None,
+            "oauth_redirect_uri": settings.quickbooks_redirect_uri,
+            "last_export_status": (integration.settings or {}).get("last_export_status", "ready"),
+            "last_error_detail": None,
         }
-    )
-    integration.last_synced_at = datetime.utcnow()
-    integration.settings = {
-        **(integration.settings or {}),
-        "realm_id": realmId or (integration.settings or {}).get("realm_id"),
-        "company_name": (integration.settings or {}).get("company_name", "QuickBooks Company"),
-        "oauth_state": None,
-        "oauth_redirect_uri": settings.quickbooks_redirect_uri,
-        "last_export_status": (integration.settings or {}).get("last_export_status", "ready"),
-    }
-    db.commit()
-    db.refresh(integration)
-    return QuickBooksActionResponse(
-        message="QuickBooks OAuth callback completed successfully.",
-        integration=IntegrationConnectionRead.model_validate(integration),
-    )
+        db.commit()
+        db.refresh(integration)
+        return QuickBooksActionResponse(
+            message="QuickBooks OAuth callback completed successfully.",
+            integration=IntegrationConnectionRead.model_validate(integration),
+        )
+    except HTTPException as exc:
+        integration.status = IntegrationStatus.ERROR
+        integration.settings = {
+            **(integration.settings or {}),
+            "last_error_detail": str(exc.detail),
+            "oauth_state": None,
+        }
+        db.commit()
+        raise
 
 
 @app.post(f"{settings.api_prefix}/integrations/{{integration_id}}/disconnect", response_model=QuickBooksActionResponse)
@@ -1958,28 +1969,39 @@ def refresh_integration_credentials(
     if not tokens or not tokens.get("refresh_token"):
         raise HTTPException(status_code=400, detail="No refresh token is stored for this QuickBooks connection.")
 
-    refreshed = refresh_tokens(tokens["refresh_token"])
-    integration.credentials_ref = seal_secret(
-        {
-            "access_token": refreshed["access_token"],
-            "refresh_token": refreshed.get("refresh_token", tokens["refresh_token"]),
-            "expires_at": token_expiry(refreshed.get("expires_in", 3600)),
-            "refresh_expires_at": token_expiry(refreshed.get("x_refresh_token_expires_in", 86400)),
+    try:
+        refreshed = refresh_tokens(tokens["refresh_token"])
+        integration.credentials_ref = seal_secret(
+            {
+                "access_token": refreshed["access_token"],
+                "refresh_token": refreshed.get("refresh_token", tokens["refresh_token"]),
+                "expires_at": token_expiry(refreshed.get("expires_in", 3600)),
+                "refresh_expires_at": token_expiry(refreshed.get("x_refresh_token_expires_in", 86400)),
+            }
+        )
+        integration.status = IntegrationStatus.CONNECTED
+        integration.last_synced_at = datetime.utcnow()
+        integration.settings = {
+            **(integration.settings or {}),
+            "last_export_status": (integration.settings or {}).get("last_export_status", "ready"),
+            "token_refresh_status": "completed",
+            "last_error_detail": None,
         }
-    )
-    integration.status = IntegrationStatus.CONNECTED
-    integration.last_synced_at = datetime.utcnow()
-    integration.settings = {
-        **(integration.settings or {}),
-        "last_export_status": (integration.settings or {}).get("last_export_status", "ready"),
-        "token_refresh_status": "completed",
-    }
-    db.commit()
-    db.refresh(integration)
-    return QuickBooksActionResponse(
-        message="QuickBooks tokens refreshed successfully.",
-        integration=IntegrationConnectionRead.model_validate(integration),
-    )
+        db.commit()
+        db.refresh(integration)
+        return QuickBooksActionResponse(
+            message="QuickBooks tokens refreshed successfully.",
+            integration=IntegrationConnectionRead.model_validate(integration),
+        )
+    except HTTPException as exc:
+        integration.status = IntegrationStatus.ERROR
+        integration.settings = {
+            **(integration.settings or {}),
+            "token_refresh_status": "failed",
+            "last_error_detail": str(exc.detail),
+        }
+        db.commit()
+        raise
 
 
 @app.post(f"{settings.api_prefix}/integrations/{{integration_id}}/export-labor", response_model=QuickBooksActionResponse)
@@ -2232,6 +2254,8 @@ def get_setup_overview(
 
 @app.post(f"{settings.api_prefix}/bootstrap/demo", response_model=dict)
 def bootstrap_demo(db: Session = Depends(get_db)):
+    if not settings.allow_demo_bootstrap:
+        raise HTTPException(status_code=403, detail="Demo bootstrap is disabled in this environment.")
     existing_org = db.scalar(select(Organization).where(Organization.name == "Demo Diner"))
     if existing_org:
         demo_admin = db.scalar(

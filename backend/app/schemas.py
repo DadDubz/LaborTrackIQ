@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models import (
     AvailabilityStatus,
@@ -163,7 +163,7 @@ class ScheduleRestoreResponse(BaseModel):
 class AvailabilityRequestCreate(BaseModel):
     organization_id: int
     employee_id: int
-    weekday: Optional[int] = None
+    weekday: Optional[int] = Field(default=None, ge=0, le=6)
     start_time: str
     end_time: str
     start_date: Optional[date] = None
@@ -234,10 +234,10 @@ class ShiftChangeRequestRead(BaseModel):
 
 class CoverageTargetCreate(BaseModel):
     organization_id: int
-    weekday: int
+    weekday: int = Field(ge=0, le=6)
     daypart: CoverageDaypart
     role_label: Optional[str] = None
-    required_headcount: int
+    required_headcount: int = Field(ge=1, le=100)
 
 
 class CoverageTargetRead(BaseModel):
@@ -312,7 +312,7 @@ class TimeEntryUpdate(BaseModel):
 class ReportRecipientCreate(BaseModel):
     organization_id: int
     email: EmailStr
-    report_type: str
+    report_type: str = Field(min_length=1, max_length=120)
 
 
 class ReportRecipientRead(BaseModel):

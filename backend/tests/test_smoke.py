@@ -18,7 +18,8 @@ os.environ["SECRET_KEY"] = "labortrackiq-test-secret"
 
 from fastapi.testclient import TestClient
 
-from app.db.session import Base, SessionLocal, engine
+from app.core.config import settings
+from app.db.session import Base, engine
 from app.main import app, ensure_schedule_shift_publish_columns
 
 
@@ -339,6 +340,15 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             },
         )
         self.assertEqual(second_approval.status_code, 400, second_approval.text)
+
+    def test_bootstrap_can_be_disabled_for_non_local_environments(self):
+        original_value = settings.allow_demo_bootstrap
+        settings.allow_demo_bootstrap = False
+        try:
+            response = self.client.post("/api/bootstrap/demo")
+            self.assertEqual(response.status_code, 403, response.text)
+        finally:
+            settings.allow_demo_bootstrap = original_value
 
 
 if __name__ == "__main__":
