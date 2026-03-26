@@ -1398,8 +1398,14 @@ def update_shift_change_request(
         replacement_employee = get_employee_or_404(payload.replacement_employee_id, request.organization_id, db)
 
     if payload.status == ShiftChangeStatus.APPROVED:
+        if request.status != ShiftChangeStatus.PENDING:
+            raise HTTPException(status_code=400, detail="Only pending shift change requests can be approved.")
+        if shift.shift_date < date.today():
+            raise HTTPException(status_code=400, detail="Past shifts cannot be reassigned.")
         if replacement_employee is None:
             raise HTTPException(status_code=400, detail="Choose a replacement employee before approving.")
+        if replacement_employee.id == request.requester_employee_id:
+            raise HTTPException(status_code=400, detail="Requester cannot be the approved replacement.")
         shift.employee_id = replacement_employee.id
         request.replacement_employee_id = replacement_employee.id
 

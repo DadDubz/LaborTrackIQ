@@ -2,7 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 
@@ -57,6 +57,9 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             "X-Employee-Number": employee_number,
             "X-Employee-Pin": pin_code,
         }
+
+    def get_week_start(self, day: date) -> date:
+        return day - timedelta(days=day.weekday())
 
     def test_employee_self_service_requires_headers(self):
         unauthorized = self.client.get("/api/employees/3/profile")
@@ -202,6 +205,140 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         self.assertEqual(export.status_code, 200, export.text)
         summary = export.json()["export_summary"]
         self.assertEqual(summary["entries"], 1)
+
+    def test_schedule_publish_and_unpublish_controls_employee_visibility(self):
+        headers = self.admin_headers()
+        shift_day = date.today() + timedelta(days=2)
+        shift_start = datetime.combine(shift_day, datetime.min.time()).replace(hour=9).isoformat() + "Z"
+        shift_end = datetime.combine(shift_day, datetime.min.time()).replace(hour=17).isoformat() + "Z"
+
+        created_shift = self.client.post(
+            "/api/shifts",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "shift_date": shift_day.isoformat(),
+                "start_at": shift_start,
+                "end_at": shift_end,
+                "location_name": "Main Store",
+                "role_label": "Front Counter",
+            },
+        )
+        self.assertEqual(created_shift.status_code, 200, created_shift.text)
+        shift_id = created_shift.json()["id"]
+
+        before_publish = self.client.get("/api/employees/3/schedule", headers=self.employee_headers())
+        self.assertEqual(before_publish.status_code, 200, before_publish.text)
+        self.assertNotIn(shift_id, [shift["id"] for shift in before_publish.json()])
+
+        week_start = self.get_week_start(shift_day)
+        publish = self.client.post(
+            "/api/organizations/1/schedule/publish",
+            headers=headers,
+            json={"week_start": week_start.isoformat(), "force_publish": False},
+        )
+        self.assertEqual(publish.status_code, 200, publish.text)
+
+        after_publish = self.client.get("/api/employees/3/schedule", headers=self.employee_headers())
+        self.assertEqual(after_publish.status_code, 200, after_publish.text)
+        self.assertIn(shift_id, [shift["id"] for shift in after_publish.json()])
+
+        unpublish = self.client.post(
+            "/api/organizations/1/schedule/unpublish",
+            headers=headers,
+            json={"week_start": week_start.isoformat(), "force_publish": False},
+        )
+        self.assertEqual(unpublish.status_code, 200, unpublish.text)
+
+        after_unpublish = self.client.get("/api/employees/3/schedule", headers=self.employee_headers())
+        self.assertEqual(after_unpublish.status_code, 200, after_unpublish.text)
+        self.assertNotIn(shift_id, [shift["id"] for shift in after_unpublish.json()])
+
+    def test_shift_change_approval_enforces_pending_and_replacement_rules(self):
+        headers = self.admin_headers()
+
+        new_employee = self.client.post(
+            "/api/users",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "full_name": "Coverage Employee",
+                "email": "coverage.employee@demodiner.com",
+                "role": "employee",
+                "employee_number": "1003",
+                "pin_code": "2468",
+                "job_title": "Coverage",
+            },
+        )
+        self.assertEqual(new_employee.status_code, 200, new_employee.text)
+        replacement_employee_id = new_employee.json()["id"]
+
+        shift_day = date.today() + timedelta(days=3)
+        shift_start = datetime.combine(shift_day, datetime.min.time()).replace(hour=10).isoformat() + "Z"
+        shift_end = datetime.combine(shift_day, datetime.min.time()).replace(hour=16).isoformat() + "Z"
+        created_shift = self.client.post(
+            "/api/shifts",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "shift_date": shift_day.isoformat(),
+                "start_at": shift_start,
+                "end_at": shift_end,
+                "location_name": "Main Store",
+                "role_label": "Front Counter",
+            },
+        )
+        self.assertEqual(created_shift.status_code, 200, created_shift.text)
+        shift_id = created_shift.json()["id"]
+
+        shift_change = self.client.post(
+            "/api/shift-change-requests",
+            headers=self.employee_headers(),
+            json={
+                "organization_id": 1,
+                "shift_id": shift_id,
+                "requester_employee_id": 3,
+                "request_type": "pickup",
+                "note": "Need this shift covered",
+            },
+        )
+        self.assertEqual(shift_change.status_code, 200, shift_change.text)
+        request_id = shift_change.json()["id"]
+
+        requester_as_replacement = self.client.put(
+            f"/api/shift-change-requests/{request_id}",
+            headers=headers,
+            json={
+                "status": "approved",
+                "manager_response": "Should fail",
+                "replacement_employee_id": 3,
+            },
+        )
+        self.assertEqual(requester_as_replacement.status_code, 400, requester_as_replacement.text)
+
+        approve = self.client.put(
+            f"/api/shift-change-requests/{request_id}",
+            headers=headers,
+            json={
+                "status": "approved",
+                "manager_response": "Approved coverage",
+                "replacement_employee_id": replacement_employee_id,
+            },
+        )
+        self.assertEqual(approve.status_code, 200, approve.text)
+
+        second_approval = self.client.put(
+            f"/api/shift-change-requests/{request_id}",
+            headers=headers,
+            json={
+                "status": "approved",
+                "manager_response": "Should not allow re-approval",
+                "replacement_employee_id": replacement_employee_id,
+            },
+        )
+        self.assertEqual(second_approval.status_code, 400, second_approval.text)
 
 
 if __name__ == "__main__":
