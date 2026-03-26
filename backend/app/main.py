@@ -367,8 +367,30 @@ def get_integration_for_admin(integration_id: int, current_user: User, db: Sessi
 
 def get_employee_or_404(employee_id: int, organization_id: int, db: Session) -> User:
     employee = db.get(User, employee_id)
-    if not employee or employee.organization_id != organization_id or employee.role != UserRole.EMPLOYEE:
+    if (
+        not employee
+        or employee.organization_id != organization_id
+        or employee.role != UserRole.EMPLOYEE
+        or not employee.is_active
+    ):
         raise HTTPException(status_code=404, detail="Employee not found.")
+    return employee
+
+
+def get_authenticated_employee_for_self_service(
+    employee_id: int,
+    employee_number: Optional[str],
+    pin_code: Optional[str],
+    db: Session,
+) -> User:
+    if not employee_number or not pin_code:
+        raise HTTPException(status_code=401, detail="Employee credentials are required.")
+    employee = db.get(User, employee_id)
+    if not employee or employee.role != UserRole.EMPLOYEE or not employee.is_active:
+        raise HTTPException(status_code=404, detail="Employee not found.")
+    profile = get_employee_profile_or_404(employee.id, db)
+    if profile.employee_number != employee_number or profile.pin_code != pin_code:
+        raise HTTPException(status_code=403, detail="Employee credentials do not match.")
     return employee
 
 
@@ -936,8 +958,12 @@ def restore_schedule_from_snapshot(
 def acknowledge_schedule(
     payload: ScheduleAcknowledgmentCreate,
     db: Session = Depends(get_db),
+    x_employee_number: Optional[str] = Header(default=None),
+    x_employee_pin: Optional[str] = Header(default=None),
 ):
-    employee = get_employee_or_404(payload.employee_id, payload.organization_id, db)
+    employee = get_authenticated_employee_for_self_service(payload.employee_id, x_employee_number, x_employee_pin, db)
+    if employee.organization_id != payload.organization_id:
+        raise HTTPException(status_code=403, detail="Cross-organization access is not allowed.")
     acknowledgment = db.scalar(
         select(ScheduleAcknowledgment).where(
             and_(
@@ -966,7 +992,13 @@ def acknowledge_schedule(
     f"{settings.api_prefix}/employees/{{employee_id}}/schedule/acknowledgments",
     response_model=list[ScheduleAcknowledgmentRead],
 )
-def list_schedule_acknowledgments(employee_id: int, db: Session = Depends(get_db)):
+def list_schedule_acknowledgments(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    x_employee_number: Optional[str] = Header(default=None),
+    x_employee_pin: Optional[str] = Header(default=None),
+):
+    get_authenticated_employee_for_self_service(employee_id, x_employee_number, x_employee_pin, db)
     acknowledgments = db.scalars(
         select(ScheduleAcknowledgment)
         .where(ScheduleAcknowledgment.employee_id == employee_id)
@@ -988,7 +1020,13 @@ def delete_shift(
 
 
 @app.get(f"{settings.api_prefix}/employees/{{employee_id}}/schedule", response_model=list[ShiftRead])
-def get_employee_schedule(employee_id: int, db: Session = Depends(get_db)):
+def get_employee_schedule(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    x_employee_number: Optional[str] = Header(default=None),
+    x_employee_pin: Optional[str] = Header(default=None),
+):
+    get_authenticated_employee_for_self_service(employee_id, x_employee_number, x_employee_pin, db)
     shifts = db.scalars(
         select(ScheduleShift)
         .where(
@@ -1004,7 +1042,13 @@ def get_employee_schedule(employee_id: int, db: Session = Depends(get_db)):
 
 
 @app.get(f"{settings.api_prefix}/employees/{{employee_id}}/time-off-requests", response_model=list[TimeOffRequestRead])
-def list_employee_time_off_requests(employee_id: int, db: Session = Depends(get_db)):
+def list_employee_time_off_requests(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    x_employee_number: Optional[str] = Header(default=None),
+    x_employee_pin: Optional[str] = Header(default=None),
+):
+    get_authenticated_employee_for_self_service(employee_id, x_employee_number, x_employee_pin, db)
     requests = db.scalars(
         select(TimeOffRequest).where(TimeOffRequest.employee_id == employee_id).order_by(TimeOffRequest.created_at.desc())
     ).all()
@@ -1012,10 +1056,13 @@ def list_employee_time_off_requests(employee_id: int, db: Session = Depends(get_
 
 
 @app.get(f"{settings.api_prefix}/employees/{{employee_id}}/profile", response_model=EmployeeSelfProfileRead)
-def get_employee_self_profile(employee_id: int, db: Session = Depends(get_db)):
-    employee = db.get(User, employee_id)
-    if not employee or employee.role != UserRole.EMPLOYEE:
-        raise HTTPException(status_code=404, detail="Employee not found.")
+def get_employee_self_profile(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    x_employee_number: Optional[str] = Header(default=None),
+    x_employee_pin: Optional[str] = Header(default=None),
+):
+    employee = get_authenticated_employee_for_self_service(employee_id, x_employee_number, x_employee_pin, db)
     return serialize_employee_self_profile(employee, db)
 
 
@@ -1024,10 +1071,10 @@ def update_employee_self_profile(
     employee_id: int,
     payload: EmployeeSelfProfileUpdate,
     db: Session = Depends(get_db),
+    x_employee_number: Optional[str] = Header(default=None),
+    x_employee_pin: Optional[str] = Header(default=None),
 ):
-    employee = db.get(User, employee_id)
-    if not employee or employee.role != UserRole.EMPLOYEE:
-        raise HTTPException(status_code=404, detail="Employee not found.")
+    employee = get_authenticated_employee_for_self_service(employee_id, x_employee_number, x_employee_pin, db)
     profile = get_employee_profile_or_404(employee_id, db)
     profile.preferred_weekly_hours = payload.preferred_weekly_hours
     profile.preferred_shift_notes = payload.preferred_shift_notes
@@ -1037,7 +1084,13 @@ def update_employee_self_profile(
 
 
 @app.get(f"{settings.api_prefix}/employees/{{employee_id}}/shift-change-requests", response_model=list[ShiftChangeRequestRead])
-def list_employee_shift_change_requests(employee_id: int, db: Session = Depends(get_db)):
+def list_employee_shift_change_requests(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    x_employee_number: Optional[str] = Header(default=None),
+    x_employee_pin: Optional[str] = Header(default=None),
+):
+    get_authenticated_employee_for_self_service(employee_id, x_employee_number, x_employee_pin, db)
     requests = db.scalars(
         select(ShiftChangeRequest)
         .where(ShiftChangeRequest.requester_employee_id == employee_id)
@@ -1047,10 +1100,13 @@ def list_employee_shift_change_requests(employee_id: int, db: Session = Depends(
 
 
 @app.get(f"{settings.api_prefix}/employees/{{employee_id}}/pickup-board", response_model=list[ShiftChangeRequestRead])
-def list_employee_pickup_board(employee_id: int, db: Session = Depends(get_db)):
-    employee = db.get(User, employee_id)
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found.")
+def list_employee_pickup_board(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    x_employee_number: Optional[str] = Header(default=None),
+    x_employee_pin: Optional[str] = Header(default=None),
+):
+    employee = get_authenticated_employee_for_self_service(employee_id, x_employee_number, x_employee_pin, db)
     requests = db.scalars(
         select(ShiftChangeRequest)
         .where(
@@ -1059,6 +1115,7 @@ def list_employee_pickup_board(employee_id: int, db: Session = Depends(get_db)):
                 ShiftChangeRequest.request_type == ShiftChangeType.PICKUP,
                 ShiftChangeRequest.status == ShiftChangeStatus.PENDING,
                 ShiftChangeRequest.requester_employee_id != employee_id,
+                ShiftChangeRequest.replacement_employee_id.is_(None),
             )
         )
         .order_by(ShiftChangeRequest.created_at.desc())
@@ -1070,7 +1127,13 @@ def list_employee_pickup_board(employee_id: int, db: Session = Depends(get_db)):
     f"{settings.api_prefix}/employees/{{employee_id}}/availability-requests",
     response_model=list[AvailabilityRequestRead],
 )
-def list_employee_availability_requests(employee_id: int, db: Session = Depends(get_db)):
+def list_employee_availability_requests(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    x_employee_number: Optional[str] = Header(default=None),
+    x_employee_pin: Optional[str] = Header(default=None),
+):
+    get_authenticated_employee_for_self_service(employee_id, x_employee_number, x_employee_pin, db)
     requests = db.scalars(
         select(EmployeeAvailabilityRequest)
         .where(EmployeeAvailabilityRequest.employee_id == employee_id)
@@ -1080,8 +1143,15 @@ def list_employee_availability_requests(employee_id: int, db: Session = Depends(
 
 
 @app.post(f"{settings.api_prefix}/availability-requests", response_model=AvailabilityRequestRead)
-def create_availability_request(payload: AvailabilityRequestCreate, db: Session = Depends(get_db)):
-    employee = get_employee_or_404(payload.employee_id, payload.organization_id, db)
+def create_availability_request(
+    payload: AvailabilityRequestCreate,
+    db: Session = Depends(get_db),
+    x_employee_number: Optional[str] = Header(default=None),
+    x_employee_pin: Optional[str] = Header(default=None),
+):
+    employee = get_authenticated_employee_for_self_service(payload.employee_id, x_employee_number, x_employee_pin, db)
+    if employee.organization_id != payload.organization_id:
+        raise HTTPException(status_code=403, detail="Cross-organization access is not allowed.")
     if payload.weekday is None and (payload.start_date is None or payload.end_date is None):
         raise HTTPException(status_code=400, detail="Provide either a weekday or a start and end date.")
     if payload.weekday is not None and (payload.weekday < 0 or payload.weekday > 6):
@@ -1106,8 +1176,15 @@ def create_availability_request(payload: AvailabilityRequestCreate, db: Session 
 
 
 @app.post(f"{settings.api_prefix}/shift-change-requests", response_model=ShiftChangeRequestRead)
-def create_shift_change_request(payload: ShiftChangeRequestCreate, db: Session = Depends(get_db)):
-    employee = get_employee_or_404(payload.requester_employee_id, payload.organization_id, db)
+def create_shift_change_request(
+    payload: ShiftChangeRequestCreate,
+    db: Session = Depends(get_db),
+    x_employee_number: Optional[str] = Header(default=None),
+    x_employee_pin: Optional[str] = Header(default=None),
+):
+    employee = get_authenticated_employee_for_self_service(payload.requester_employee_id, x_employee_number, x_employee_pin, db)
+    if employee.organization_id != payload.organization_id:
+        raise HTTPException(status_code=403, detail="Cross-organization access is not allowed.")
     shift = db.get(ScheduleShift, payload.shift_id)
     if not shift or shift.organization_id != payload.organization_id or shift.employee_id != employee.id:
         raise HTTPException(status_code=404, detail="Shift not found for this employee.")
@@ -1133,15 +1210,25 @@ def create_shift_change_request(payload: ShiftChangeRequestCreate, db: Session =
 
 
 @app.post(f"{settings.api_prefix}/shift-change-requests/{{request_id}}/claim", response_model=ShiftChangeRequestRead)
-def claim_shift_change_request(request_id: int, payload: ShiftChangeClaimCreate, db: Session = Depends(get_db)):
+def claim_shift_change_request(
+    request_id: int,
+    payload: ShiftChangeClaimCreate,
+    db: Session = Depends(get_db),
+    x_employee_number: Optional[str] = Header(default=None),
+    x_employee_pin: Optional[str] = Header(default=None),
+):
     request = db.get(ShiftChangeRequest, request_id)
     if not request:
         raise HTTPException(status_code=404, detail="Shift change request not found.")
     if request.status != ShiftChangeStatus.PENDING or request.request_type != ShiftChangeType.PICKUP:
         raise HTTPException(status_code=400, detail="This shift is not open for pickup.")
-    claimant = get_employee_or_404(payload.employee_id, request.organization_id, db)
+    claimant = get_authenticated_employee_for_self_service(payload.employee_id, x_employee_number, x_employee_pin, db)
+    if claimant.organization_id != request.organization_id:
+        raise HTTPException(status_code=403, detail="Cross-organization access is not allowed.")
     if claimant.id == request.requester_employee_id:
         raise HTTPException(status_code=400, detail="You cannot claim your own shift.")
+    if request.replacement_employee_id and request.replacement_employee_id != claimant.id:
+        raise HTTPException(status_code=409, detail="Another employee already claimed this pickup request.")
     request.replacement_employee_id = claimant.id
     request.manager_response = f"{claimant.full_name} offered to pick up this shift."
     db.commit()
@@ -1304,8 +1391,15 @@ def upsert_coverage_target(
 
 
 @app.post(f"{settings.api_prefix}/time-off-requests", response_model=TimeOffRequestRead)
-def create_time_off_request(payload: TimeOffRequestCreate, db: Session = Depends(get_db)):
-    employee = get_employee_or_404(payload.employee_id, payload.organization_id, db)
+def create_time_off_request(
+    payload: TimeOffRequestCreate,
+    db: Session = Depends(get_db),
+    x_employee_number: Optional[str] = Header(default=None),
+    x_employee_pin: Optional[str] = Header(default=None),
+):
+    employee = get_authenticated_employee_for_self_service(payload.employee_id, x_employee_number, x_employee_pin, db)
+    if employee.organization_id != payload.organization_id:
+        raise HTTPException(status_code=403, detail="Cross-organization access is not allowed.")
     if payload.end_date < payload.start_date:
         raise HTTPException(status_code=400, detail="end_date must be on or after start_date.")
     request = TimeOffRequest(
@@ -1483,10 +1577,12 @@ def update_time_entry(
     validate_organization_access(entry.organization_id, current_user)
     if payload.clock_out_at and payload.clock_out_at <= entry.clock_in_at:
         raise HTTPException(status_code=400, detail="clock_out_at must be after clock_in_at.")
-    entry.approved = payload.approved
-    entry.notes = payload.notes
     if payload.clock_out_at is not None:
         entry.clock_out_at = payload.clock_out_at
+    if payload.approved and entry.clock_out_at is None:
+        raise HTTPException(status_code=400, detail="A time entry must be clocked out before it can be approved.")
+    entry.approved = payload.approved
+    entry.notes = payload.notes
     db.commit()
     db.refresh(entry)
     return TimeEntryRead.model_validate(entry)

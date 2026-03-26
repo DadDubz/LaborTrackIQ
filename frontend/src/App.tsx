@@ -569,6 +569,17 @@ export default function App() {
     return data;
   }
 
+  async function employeeApiFetch(path: string, options: RequestInit = {}) {
+    const headers = new Headers(options.headers ?? {});
+    if (employeeNumber) {
+      headers.set("X-Employee-Number", employeeNumber);
+    }
+    if (pinCode) {
+      headers.set("X-Employee-Pin", pinCode);
+    }
+    return apiFetch(path, { ...options, headers }, "");
+  }
+
   async function loadAdminData(accessToken: string, orgId: string) {
     try {
       const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData, publicationData, availabilityData, coverageData, shiftChangeData, notificationData, timeEntryData, recipientData] = await Promise.all([
@@ -624,7 +635,7 @@ export default function App() {
 
   async function loadEmployeeRequests(employeeId: number) {
     try {
-      const data = (await apiFetch(`/employees/${employeeId}/time-off-requests`, {}, "")) as TimeOffRequest[];
+      const data = (await employeeApiFetch(`/employees/${employeeId}/time-off-requests`)) as TimeOffRequest[];
       setEmployeeRequests(data);
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to load requests.");
@@ -633,7 +644,7 @@ export default function App() {
 
   async function loadEmployeeAvailabilityRequests(employeeId: number) {
     try {
-      const data = (await apiFetch(`/employees/${employeeId}/availability-requests`, {}, "")) as AvailabilityRequest[];
+      const data = (await employeeApiFetch(`/employees/${employeeId}/availability-requests`)) as AvailabilityRequest[];
       setEmployeeAvailabilityRequests(data);
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to load availability requests.");
@@ -642,7 +653,7 @@ export default function App() {
 
   async function loadEmployeeShiftChangeRequests(employeeId: number) {
     try {
-      const data = (await apiFetch(`/employees/${employeeId}/shift-change-requests`, {}, "")) as ShiftChangeRequest[];
+      const data = (await employeeApiFetch(`/employees/${employeeId}/shift-change-requests`)) as ShiftChangeRequest[];
       setEmployeeShiftChangeRequests(data);
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to load shift change requests.");
@@ -651,7 +662,7 @@ export default function App() {
 
   async function loadEmployeeProfile(employeeId: number) {
     try {
-      const data = (await apiFetch(`/employees/${employeeId}/profile`, {}, "")) as EmployeeSelfProfile;
+      const data = (await employeeApiFetch(`/employees/${employeeId}/profile`)) as EmployeeSelfProfile;
       setEmployeeProfile(data);
       setEmployeeProfileForm({
         preferred_weekly_hours: data.preferred_weekly_hours ? String(data.preferred_weekly_hours) : "",
@@ -664,7 +675,7 @@ export default function App() {
 
   async function loadPickupBoard(employeeId: number) {
     try {
-      const data = (await apiFetch(`/employees/${employeeId}/pickup-board`, {}, "")) as ShiftChangeRequest[];
+      const data = (await employeeApiFetch(`/employees/${employeeId}/pickup-board`)) as ShiftChangeRequest[];
       setPickupBoard(data);
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to load pickup board.");
@@ -673,7 +684,7 @@ export default function App() {
 
   async function loadEmployeeScheduleAcknowledgments(employeeId: number) {
     try {
-      const data = (await apiFetch(`/employees/${employeeId}/schedule/acknowledgments`, {}, "")) as ScheduleAcknowledgment[];
+      const data = (await employeeApiFetch(`/employees/${employeeId}/schedule/acknowledgments`)) as ScheduleAcknowledgment[];
       setEmployeeScheduleAcknowledgments(data);
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to load schedule acknowledgments.");
@@ -877,7 +888,7 @@ export default function App() {
     }
     setEmployeeError("");
     try {
-      await apiFetch(
+      await employeeApiFetch(
         "/time-off-requests",
         {
           method: "POST",
@@ -889,7 +900,6 @@ export default function App() {
             reason: requestOffForm.reason,
           }),
         },
-        "",
       );
       setRequestOffMessage("Request off submitted for manager review.");
       setRequestOffForm({
@@ -910,7 +920,7 @@ export default function App() {
     const latestWeekStart = getWeekStartIso(new Date(`${employeeLatestPublishedShift.shift_date}T00:00:00`));
     setEmployeeError("");
     try {
-      await apiFetch(
+      await employeeApiFetch(
         "/schedule/acknowledgments",
         {
           method: "POST",
@@ -920,7 +930,6 @@ export default function App() {
             week_start: latestWeekStart,
           }),
         },
-        "",
       );
       setRequestOffMessage("Schedule update acknowledged.");
       await loadEmployeeScheduleAcknowledgments(employeePortal.employee_id);
@@ -939,7 +948,7 @@ export default function App() {
     }
     setEmployeeError("");
     try {
-      await apiFetch(
+      await employeeApiFetch(
         "/availability-requests",
         {
           method: "POST",
@@ -954,7 +963,6 @@ export default function App() {
             note: availabilityForm.note || null,
           }),
         },
-        "",
       );
       setRequestOffMessage("Availability request submitted for manager review.");
       await loadEmployeeAvailabilityRequests(employeePortal.employee_id);
@@ -970,7 +978,7 @@ export default function App() {
     }
     setEmployeeError("");
     try {
-      const data = (await apiFetch(
+      const data = (await employeeApiFetch(
         `/employees/${employeePortal.employee_id}/profile`,
         {
           method: "PUT",
@@ -981,7 +989,6 @@ export default function App() {
             preferred_shift_notes: employeeProfileForm.preferred_shift_notes || null,
           }),
         },
-        "",
       )) as EmployeeSelfProfile;
       setEmployeeProfile(data);
       setRequestOffMessage("Profile preferences updated.");
@@ -997,7 +1004,7 @@ export default function App() {
     }
     setEmployeeError("");
     try {
-      await apiFetch(
+      await employeeApiFetch(
         "/shift-change-requests",
         {
           method: "POST",
@@ -1009,7 +1016,6 @@ export default function App() {
             note: shiftChangeForm.note,
           }),
         },
-        "",
       );
       setRequestOffMessage("Shift change request sent for manager review.");
       setShiftChangeForm({ shift_id: "", request_type: "pickup", note: "" });
@@ -1029,13 +1035,12 @@ export default function App() {
     }
     setEmployeeError("");
     try {
-      await apiFetch(
+      await employeeApiFetch(
         `/shift-change-requests/${requestId}/claim`,
         {
           method: "POST",
           body: JSON.stringify({ employee_id: employeePortal.employee_id }),
         },
-        "",
       );
       setRequestOffMessage("Pickup interest sent to the manager for approval.");
       await loadPickupBoard(employeePortal.employee_id);
@@ -1822,8 +1827,9 @@ export default function App() {
   const pendingShiftChangeRequests = orgShiftChangeRequests.filter((request) => request.status === "pending");
   const approvedShiftChangeRequests = orgShiftChangeRequests.filter((request) => request.status === "approved");
   const visibleShiftChangeRequests = requestQueueTab === "pending" ? pendingShiftChangeRequests : approvedShiftChangeRequests;
-  const pendingTimeEntries = timeEntries.filter((entry) => !entry.approved);
-  const approvedTimeEntries = timeEntries.filter((entry) => entry.approved);
+  const openTimeEntries = timeEntries.filter((entry) => !entry.clock_out_at);
+  const pendingTimeEntries = timeEntries.filter((entry) => !entry.approved && Boolean(entry.clock_out_at));
+  const approvedTimeEntries = timeEntries.filter((entry) => entry.approved && Boolean(entry.clock_out_at));
   const pendingAvailabilityRequests = orgAvailabilityRequests.filter((request) => request.status === "pending");
   const recentSchedulePublications = schedulePublications.slice(0, 6);
 
@@ -3432,6 +3438,10 @@ export default function App() {
                       </div>
                       <div className="metric-grid compact-grid">
                         <div className="metric">
+                          <span>{openTimeEntries.length}</span>
+                          <p>Open Punches</p>
+                        </div>
+                        <div className="metric">
                           <span>{pendingTimeEntries.length}</span>
                           <p>Pending Review</p>
                         </div>
@@ -3480,6 +3490,21 @@ export default function App() {
                         <div className="empty-state">No timesheet entries need review right now.</div>
                       )}
                     </div>
+                    {openTimeEntries.length > 0 ? (
+                      <div className="schedule-sidebar-list">
+                        <strong>Open Punches</strong>
+                        {openTimeEntries.map((entry) => {
+                          const employee = employeeOptions.find((item) => item.id === entry.employee_id);
+                          return (
+                            <div className="entity-card" key={entry.id}>
+                              <strong>{employee?.full_name ?? `Employee ${entry.employee_id}`}</strong>
+                              <p>In: {new Date(entry.clock_in_at).toLocaleString()}</p>
+                              <p>Still clocked in</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </div>
 
                   <form className="stack-form" onSubmit={handleReviewTimeEntry}>
