@@ -87,6 +87,7 @@ class ShiftRead(BaseModel):
 
 class SchedulePublishRequest(BaseModel):
     week_start: date
+    force_publish: bool = False
 
 
 class SchedulePublishResponse(BaseModel):
@@ -167,6 +168,7 @@ class CoverageTargetCreate(BaseModel):
     organization_id: int
     weekday: int
     daypart: CoverageDaypart
+    role_label: Optional[str] = None
     required_headcount: int
 
 
@@ -177,6 +179,7 @@ class CoverageTargetRead(BaseModel):
     organization_id: int
     weekday: int
     daypart: CoverageDaypart
+    role_label: Optional[str]
     required_headcount: int
     created_at: datetime
 

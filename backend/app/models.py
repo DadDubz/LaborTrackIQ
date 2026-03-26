@@ -128,6 +128,7 @@ class ScheduleCoverageTarget(Base):
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
     weekday: Mapped[int] = mapped_column(Integer, nullable=False)
     daypart: Mapped[CoverageDaypart] = mapped_column(SqlEnum(CoverageDaypart), nullable=False)
+    role_label: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     required_headcount: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

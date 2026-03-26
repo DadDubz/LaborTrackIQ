@@ -97,6 +97,9 @@ def ensure_schedule_shift_publish_columns() -> None:
         publication_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(schedule_publication_events)"))}
         if publication_columns and "comment" not in publication_columns:
             connection.execute(text("ALTER TABLE schedule_publication_events ADD COLUMN comment TEXT"))
+        coverage_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(schedule_coverage_targets)"))}
+        if coverage_columns and "role_label" not in coverage_columns:
+            connection.execute(text("ALTER TABLE schedule_coverage_targets ADD COLUMN role_label VARCHAR(120)"))
 
 
 ensure_schedule_shift_publish_columns()
@@ -190,6 +193,41 @@ def load_employee_clock_context(employee_id: int, organization_id: int, db: Sess
 
 def week_end_from_start(week_start: date) -> date:
     return date.fromordinal(week_start.toordinal() + 6)
+
+
+def resolve_daypart_for_time(value: datetime) -> str:
+    hour = value.hour
+    if hour < 11:
+        return "morning"
+    if hour < 16:
+        return "lunch"
+    return "close"
+
+
+def weekday_for_schedule(value: date) -> int:
+    return (value.weekday() + 1) % 7
+
+
+def build_coverage_shortages(
+    shifts: list[ScheduleShift],
+    coverage_targets: list[ScheduleCoverageTarget],
+) -> list[str]:
+    shortages: list[str] = []
+    for target in coverage_targets:
+        scheduled_count = sum(
+            1
+            for shift in shifts
+            if weekday_for_schedule(shift.shift_date) == target.weekday
+            and resolve_daypart_for_time(shift.start_at) == target.daypart.value
+            and (not target.role_label or (shift.role_label or "").strip().lower() == target.role_label.strip().lower())
+        )
+        if scheduled_count >= target.required_headcount:
+            continue
+        role_suffix = f" for {target.role_label}" if target.role_label else ""
+        shortages.append(
+            f"{target.daypart.value.title()} on weekday {target.weekday} is short by {target.required_headcount - scheduled_count}{role_suffix}."
+        )
+    return shortages
 
 
 def build_shift_snapshot(shift: ScheduleShift) -> dict:
@@ -495,6 +533,16 @@ def publish_schedule_week(
     ).all()
     if not shifts:
         raise HTTPException(status_code=404, detail="No shifts found for the selected week.")
+
+    coverage_targets = db.scalars(
+        select(ScheduleCoverageTarget).where(ScheduleCoverageTarget.organization_id == organization_id)
+    ).all()
+    coverage_shortages = build_coverage_shortages(shifts, list(coverage_targets))
+    if coverage_shortages and not payload.force_publish:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Publish override required: {' '.join(coverage_shortages[:4])}",
+        )
 
     published_at = datetime.utcnow()
     for shift in shifts:
@@ -870,19 +918,25 @@ def upsert_coverage_target(
     current_user: User = Depends(require_admin_user),
 ):
     validate_organization_access(payload.organization_id, current_user)
+    normalized_role = payload.role_label.strip() if payload.role_label else None
+    target_filters = [
+        ScheduleCoverageTarget.organization_id == payload.organization_id,
+        ScheduleCoverageTarget.weekday == payload.weekday,
+        ScheduleCoverageTarget.daypart == payload.daypart,
+    ]
+    target_filters.append(
+        ScheduleCoverageTarget.role_label.is_(None) if normalized_role is None else ScheduleCoverageTarget.role_label == normalized_role
+    )
     target = db.scalar(
-        select(ScheduleCoverageTarget).where(
-            and_(
-                ScheduleCoverageTarget.organization_id == payload.organization_id,
-                ScheduleCoverageTarget.weekday == payload.weekday,
-                ScheduleCoverageTarget.daypart == payload.daypart,
-            )
-        )
+        select(ScheduleCoverageTarget).where(and_(*target_filters))
     )
     if target:
         target.required_headcount = payload.required_headcount
+        target.role_label = normalized_role
     else:
-        target = ScheduleCoverageTarget(**payload.model_dump())
+        target_data = payload.model_dump()
+        target_data["role_label"] = normalized_role
+        target = ScheduleCoverageTarget(**target_data)
         db.add(target)
 
     db.commit()

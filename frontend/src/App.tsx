@@ -122,6 +122,7 @@ type CoverageTarget = {
   organization_id: number;
   weekday: number;
   daypart: "morning" | "lunch" | "close";
+  role_label: string | null;
   required_headcount: number;
   created_at: string;
 };
@@ -270,8 +271,7 @@ function coverageDaypartLabel(value: CoverageTarget["daypart"]) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function resolveDaypart(shift: Shift) {
-  const hour = new Date(shift.start_at).getHours();
+function resolveDaypartFromHour(hour: number) {
   if (hour < 11) {
     return "morning" as const;
   }
@@ -279,6 +279,15 @@ function resolveDaypart(shift: Shift) {
     return "lunch" as const;
   }
   return "close" as const;
+}
+
+function resolveDaypart(shift: Shift) {
+  return resolveDaypartFromHour(new Date(shift.start_at).getHours());
+}
+
+function resolveDaypartFromTimeLabel(value: string) {
+  const [hours] = value.split(":").map(Number);
+  return resolveDaypartFromHour(hours ?? 0);
 }
 
 function getShiftHours(shift: Shift) {
@@ -394,6 +403,7 @@ export default function App() {
   const [coverageTargetForm, setCoverageTargetForm] = useState({
     weekday: String(new Date().getDay()),
     daypart: "lunch" as CoverageTarget["daypart"],
+    role_label: "",
     required_headcount: "2",
   });
 
@@ -584,6 +594,51 @@ export default function App() {
       location_name: "Main Store",
       role_label: "Available Coverage",
     });
+  }
+
+  async function handleAutofillCoverage(dateValue: string, daypart: CoverageTarget["daypart"], roleLabel?: string | null) {
+    const dayEntry = weekSchedule.find((day) => day.dateValue === dateValue);
+    if (!dayEntry) {
+      return;
+    }
+
+    const matchingSuggestions = dayEntry.availabilitySuggestions.filter((request) => {
+      const matchesDaypart = resolveDaypartFromTimeLabel(request.start_time) === daypart;
+      if (!matchesDaypart) {
+        return false;
+      }
+      if (!roleLabel) {
+        return true;
+      }
+      const employee = employeeOptions.find((item) => item.id === request.employee_id);
+      return (employee?.job_title ?? "").trim().toLowerCase() === roleLabel.trim().toLowerCase();
+    });
+
+    if (matchingSuggestions.length === 0) {
+      setAdminError("No approved availability matches that staffing gap yet.");
+      return;
+    }
+
+    setAdminError("");
+    try {
+      for (const request of matchingSuggestions) {
+        await apiFetch("/shifts", {
+          method: "POST",
+          body: JSON.stringify({
+            organization_id: Number(organizationId),
+            employee_id: request.employee_id,
+            shift_date: dateValue,
+            start_at: toIsoDateTime(dateValue, request.start_time),
+            end_at: toIsoDateTime(dateValue, request.end_time),
+            location_name: "Main Store",
+            role_label: roleLabel || "Available Coverage",
+          }),
+        });
+      }
+      await refreshAdminData(`${matchingSuggestions.length} shift(s) added from approved availability.`);
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to auto-fill staffing coverage.");
+    }
   }
 
   function moveScheduleWeek(direction: number) {
@@ -952,11 +1007,32 @@ export default function App() {
     try {
       const response = (await apiFetch(`/organizations/${organizationId}/schedule/publish`, {
         method: "POST",
-        body: JSON.stringify({ week_start: scheduleWeekStart }),
+        body: JSON.stringify({ week_start: scheduleWeekStart, force_publish: false }),
       })) as SchedulePublishResponse;
       await refreshAdminData(`${response.published_shift_count} shift(s) published for ${formatWeekLabel(scheduleWeekStart)}.`);
     } catch (error) {
-      setAdminError(error instanceof Error ? error.message : "Unable to publish schedule.");
+      const message = error instanceof Error ? error.message : "Unable to publish schedule.";
+      if (message.startsWith("Publish override required:")) {
+        const shouldOverride = window.confirm(`${message}\n\nPublish anyway?`);
+        if (!shouldOverride) {
+          setAdminError(message);
+          return;
+        }
+        try {
+          const response = (await apiFetch(`/organizations/${organizationId}/schedule/publish`, {
+            method: "POST",
+            body: JSON.stringify({ week_start: scheduleWeekStart, force_publish: true }),
+          })) as SchedulePublishResponse;
+          await refreshAdminData(
+            `${response.published_shift_count} shift(s) published with a staffing override for ${formatWeekLabel(scheduleWeekStart)}.`,
+          );
+          return;
+        } catch (overrideError) {
+          setAdminError(overrideError instanceof Error ? overrideError.message : "Unable to override and publish schedule.");
+          return;
+        }
+      }
+      setAdminError(message);
     }
   }
 
@@ -1033,6 +1109,7 @@ export default function App() {
           organization_id: Number(organizationId),
           weekday: Number(coverageTargetForm.weekday),
           daypart: coverageTargetForm.daypart,
+          role_label: coverageTargetForm.role_label || null,
           required_headcount: Number(coverageTargetForm.required_headcount),
         }),
       });
@@ -1293,15 +1370,29 @@ export default function App() {
   const weekCoverageSummaries = weekSchedule.map((day) => {
     const weekday = new Date(`${day.dateValue}T00:00:00`).getDay();
     const dayTargets = coverageTargets.filter((target) => target.weekday === weekday);
-    const dayparts = ["morning", "lunch", "close"].map((daypart) => {
-      const target = dayTargets.find((item) => item.daypart === daypart);
-      const scheduled = day.shifts.filter((shift) => resolveDaypart(shift) === daypart).length;
-      const required = target?.required_headcount ?? 0;
+    const dayparts = dayTargets.map((target) => {
+      const scheduled = day.shifts.filter(
+        (shift) =>
+          resolveDaypart(shift) === target.daypart &&
+          (!target.role_label || (shift.role_label ?? "").trim().toLowerCase() === target.role_label.trim().toLowerCase()),
+      ).length;
+      const availableSuggestions = day.availabilitySuggestions.filter((request) => {
+        if (resolveDaypartFromTimeLabel(request.start_time) !== target.daypart) {
+          return false;
+        }
+        if (!target.role_label) {
+          return true;
+        }
+        const employee = employeeOptions.find((item) => item.id === request.employee_id);
+        return (employee?.job_title ?? "").trim().toLowerCase() === target.role_label.trim().toLowerCase();
+      }).length;
       return {
-        daypart: daypart as CoverageTarget["daypart"],
+        daypart: target.daypart,
+        role_label: target.role_label,
         scheduled,
-        required,
-        shortage: Math.max(0, required - scheduled),
+        required: target.required_headcount,
+        availableSuggestions,
+        shortage: Math.max(0, target.required_headcount - scheduled),
       };
     });
 
@@ -2007,9 +2098,21 @@ export default function App() {
                           <div className="planner-alert-card" key={`coverage-${day.dateValue}`}>
                             <strong>{formatScheduleDayLabel(day.dateValue)}</strong>
                             {day.shortages.map((entry) => (
-                              <p key={`${day.dateValue}-${entry.daypart}`}>
-                                {coverageDaypartLabel(entry.daypart)} needs {entry.shortage} more team member(s) to reach {entry.required}.
-                              </p>
+                              <div className="coverage-warning-row" key={`${day.dateValue}-${entry.daypart}-${entry.role_label ?? "all"}`}>
+                                <p>
+                                  {coverageDaypartLabel(entry.daypart)}
+                                  {entry.role_label ? ` (${entry.role_label})` : ""} needs {entry.shortage} more team member(s) to reach {entry.required}.
+                                </p>
+                                {entry.availableSuggestions > 0 ? (
+                                  <button
+                                    className="ghost-button mini-action-button"
+                                    type="button"
+                                    onClick={() => void handleAutofillCoverage(day.dateValue, entry.daypart, entry.role_label)}
+                                  >
+                                    Auto-Fill {entry.availableSuggestions}
+                                  </button>
+                                ) : null}
+                              </div>
                             ))}
                           </div>
                         ))}
@@ -2095,6 +2198,30 @@ export default function App() {
                                   : "Coverage target is short for one or more dayparts."}
                               </div>
                             ) : null}
+                            {weekCoverageSummaries
+                              .find((item) => item.dateValue === day.dateValue)
+                              ?.shortages.map((entry) => (
+                                <div className="coverage-gap-card" key={`${day.dateValue}-${entry.daypart}-${entry.role_label ?? "all"}`}>
+                                  <strong>
+                                    {coverageDaypartLabel(entry.daypart)}
+                                    {entry.role_label ? ` • ${entry.role_label}` : ""}
+                                  </strong>
+                                  <p>
+                                    {entry.scheduled}/{entry.required} scheduled
+                                  </p>
+                                  {entry.availableSuggestions > 0 ? (
+                                    <button
+                                      className="ghost-button mini-action-button"
+                                      type="button"
+                                      onClick={() => void handleAutofillCoverage(day.dateValue, entry.daypart, entry.role_label)}
+                                    >
+                                      Auto-Fill {entry.availableSuggestions}
+                                    </button>
+                                  ) : (
+                                    <p>No approved matches yet.</p>
+                                  )}
+                                </div>
+                              ))}
                             {day.shifts.length > 0 ? (
                               day.shifts.map((shift) => {
                                 const window = formatShiftWindow(shift);
@@ -2248,6 +2375,11 @@ export default function App() {
                         </select>
                       </div>
                       <input
+                        placeholder="Optional role label, like Server or Cashier"
+                        value={coverageTargetForm.role_label}
+                        onChange={(event) => setCoverageTargetForm({ ...coverageTargetForm, role_label: event.target.value })}
+                      />
+                      <input
                         min="0"
                         type="number"
                         value={coverageTargetForm.required_headcount}
@@ -2263,6 +2395,7 @@ export default function App() {
                               <strong>
                                 {weekdayLabel(target.weekday)} • {coverageDaypartLabel(target.daypart)}
                               </strong>
+                              {target.role_label ? <p>{target.role_label}</p> : null}
                               <p>{target.required_headcount} team member(s) needed</p>
                             </div>
                           ))}
