@@ -847,12 +847,42 @@ textarea {
   background: rgba(243, 187, 83, 0.12);
 }
 
+.mini-request-copy {
+  display: grid;
+  gap: 4px;
+}
+
 .availability-suggestion {
   background: rgba(17, 33, 59, 0.08);
 }
 
+.mini-action-button {
+  padding: 8px 12px;
+}
+
 .mini-request strong {
   font-size: 0.92rem;
+}
+
+.mini-request span {
+  color: #586678;
+  font-size: 0.88rem;
+}
+
+.target-list {
+  display: grid;
+  gap: 10px;
+}
+
+.target-card {
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(17, 33, 59, 0.06);
+}
+
+.target-card p {
+  margin: 4px 0 0;
+  color: #586678;
 }
 
 .shift-tile {

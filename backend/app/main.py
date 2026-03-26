@@ -20,6 +20,7 @@ from app.models import (
     Organization,
     ReportSubscription,
     ScheduleAcknowledgment,
+    ScheduleCoverageTarget,
     SchedulePublicationEvent,
     ScheduleShift,
     TimeEntry,
@@ -32,6 +33,8 @@ from app.schemas import (
     AvailabilityRequestRead,
     AvailabilityRequestUpdate,
     ClockAction,
+    CoverageTargetCreate,
+    CoverageTargetRead,
     ClockLookupResponse,
     ClockResponse,
     DashboardSummary,
@@ -840,6 +843,51 @@ def update_availability_request(
     db.commit()
     db.refresh(request)
     return request
+
+
+@app.get(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/coverage-targets",
+    response_model=list[CoverageTargetRead],
+)
+def list_coverage_targets(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    targets = db.scalars(
+        select(ScheduleCoverageTarget)
+        .where(ScheduleCoverageTarget.organization_id == organization_id)
+        .order_by(ScheduleCoverageTarget.weekday.asc(), ScheduleCoverageTarget.daypart.asc())
+    ).all()
+    return list(targets)
+
+
+@app.post(f"{settings.api_prefix}/coverage-targets", response_model=CoverageTargetRead)
+def upsert_coverage_target(
+    payload: CoverageTargetCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(payload.organization_id, current_user)
+    target = db.scalar(
+        select(ScheduleCoverageTarget).where(
+            and_(
+                ScheduleCoverageTarget.organization_id == payload.organization_id,
+                ScheduleCoverageTarget.weekday == payload.weekday,
+                ScheduleCoverageTarget.daypart == payload.daypart,
+            )
+        )
+    )
+    if target:
+        target.required_headcount = payload.required_headcount
+    else:
+        target = ScheduleCoverageTarget(**payload.model_dump())
+        db.add(target)
+
+    db.commit()
+    db.refresh(target)
+    return target
 
 
 @app.post(f"{settings.api_prefix}/time-off-requests", response_model=TimeOffRequestRead)

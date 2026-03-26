@@ -5,7 +5,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
-from app.models import AvailabilityStatus, IntegrationProvider, IntegrationStatus, TimeOffStatus, UserRole
+from app.models import AvailabilityStatus, CoverageDaypart, IntegrationProvider, IntegrationStatus, TimeOffStatus, UserRole
 
 
 class OrganizationCreate(BaseModel):
@@ -161,6 +161,24 @@ class AvailabilityRequestRead(BaseModel):
 class AvailabilityRequestUpdate(BaseModel):
     status: AvailabilityStatus
     manager_response: Optional[str] = None
+
+
+class CoverageTargetCreate(BaseModel):
+    organization_id: int
+    weekday: int
+    daypart: CoverageDaypart
+    required_headcount: int
+
+
+class CoverageTargetRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    organization_id: int
+    weekday: int
+    daypart: CoverageDaypart
+    required_headcount: int
+    created_at: datetime
 
 
 class NoteCreate(BaseModel):

@@ -117,6 +117,15 @@ type AvailabilityRequest = {
   created_at: string;
 };
 
+type CoverageTarget = {
+  id: number;
+  organization_id: number;
+  weekday: number;
+  daypart: "morning" | "lunch" | "close";
+  required_headcount: number;
+  created_at: string;
+};
+
 type QuickBooksAuthorization = {
   authorization_url: string;
   state: string;
@@ -257,6 +266,21 @@ function weekdayLabel(value: number) {
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][value] ?? "Day";
 }
 
+function coverageDaypartLabel(value: CoverageTarget["daypart"]) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function resolveDaypart(shift: Shift) {
+  const hour = new Date(shift.start_at).getHours();
+  if (hour < 11) {
+    return "morning" as const;
+  }
+  if (hour < 16) {
+    return "lunch" as const;
+  }
+  return "close" as const;
+}
+
 function getShiftHours(shift: Shift) {
   const start = new Date(shift.start_at).getTime();
   const end = new Date(shift.end_at).getTime();
@@ -305,6 +329,7 @@ export default function App() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [orgTimeOffRequests, setOrgTimeOffRequests] = useState<TimeOffRequest[]>([]);
   const [orgAvailabilityRequests, setOrgAvailabilityRequests] = useState<AvailabilityRequest[]>([]);
+  const [coverageTargets, setCoverageTargets] = useState<CoverageTarget[]>([]);
   const [schedulePublications, setSchedulePublications] = useState<SchedulePublication[]>([]);
   const [adminTab, setAdminTab] = useState<AdminTab>("setup");
   const [setupMessage, setSetupMessage] = useState("Preparing demo workspace...");
@@ -365,6 +390,11 @@ export default function App() {
     id: null as number | null,
     status: "pending",
     manager_response: "",
+  });
+  const [coverageTargetForm, setCoverageTargetForm] = useState({
+    weekday: String(new Date().getDay()),
+    daypart: "lunch" as CoverageTarget["daypart"],
+    required_headcount: "2",
   });
 
   useEffect(() => {
@@ -429,7 +459,7 @@ export default function App() {
 
   async function loadAdminData(accessToken: string, orgId: string) {
     try {
-      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData, publicationData, availabilityData] = await Promise.all([
+      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData, publicationData, availabilityData, coverageData] = await Promise.all([
         apiFetch(`/organizations/${orgId}/dashboard-summary`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/users`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/shifts`, {}, accessToken),
@@ -439,6 +469,7 @@ export default function App() {
         apiFetch(`/organizations/${orgId}/time-off-requests`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/schedule/publications`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/availability-requests`, {}, accessToken),
+        apiFetch(`/organizations/${orgId}/coverage-targets`, {}, accessToken),
       ]);
       const quickBooksConfigData = (await apiFetch(
         `/organizations/${orgId}/integrations/quickbooks/config-status`,
@@ -455,6 +486,7 @@ export default function App() {
       setOrgTimeOffRequests(requestData as TimeOffRequest[]);
       setSchedulePublications(publicationData as SchedulePublication[]);
       setOrgAvailabilityRequests(availabilityData as AvailabilityRequest[]);
+      setCoverageTargets(coverageData as CoverageTarget[]);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "Unable to load admin data.");
     }
@@ -540,6 +572,18 @@ export default function App() {
       shift_date: dateValue,
       role_label: current.role_label || "Scheduled Shift",
     }));
+  }
+
+  function prepareShiftFromAvailability(request: AvailabilityRequest, dateValue: string) {
+    setShiftForm({
+      id: null,
+      employee_id: String(request.employee_id),
+      shift_date: dateValue,
+      start_time: request.start_time,
+      end_time: request.end_time,
+      location_name: "Main Store",
+      role_label: "Available Coverage",
+    });
   }
 
   function moveScheduleWeek(direction: number) {
@@ -979,6 +1023,25 @@ export default function App() {
     }
   }
 
+  async function handleSaveCoverageTarget(event: FormEvent) {
+    event.preventDefault();
+    setAdminError("");
+    try {
+      await apiFetch("/coverage-targets", {
+        method: "POST",
+        body: JSON.stringify({
+          organization_id: Number(organizationId),
+          weekday: Number(coverageTargetForm.weekday),
+          daypart: coverageTargetForm.daypart,
+          required_headcount: Number(coverageTargetForm.required_headcount),
+        }),
+      });
+      await refreshAdminData("Coverage target saved.");
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to save coverage target.");
+    }
+  }
+
   async function handleMoveShiftToDate(shiftId: number, targetDate: string) {
     const shift = shifts.find((item) => item.id === shiftId);
     if (!shift || shift.shift_date === targetDate) {
@@ -1227,6 +1290,32 @@ export default function App() {
       return request.status === "approved" && request.weekday === weekday && !employeeScheduled && !employeeOff;
     }),
   }));
+  const weekCoverageSummaries = weekSchedule.map((day) => {
+    const weekday = new Date(`${day.dateValue}T00:00:00`).getDay();
+    const dayTargets = coverageTargets.filter((target) => target.weekday === weekday);
+    const dayparts = ["morning", "lunch", "close"].map((daypart) => {
+      const target = dayTargets.find((item) => item.daypart === daypart);
+      const scheduled = day.shifts.filter((shift) => resolveDaypart(shift) === daypart).length;
+      const required = target?.required_headcount ?? 0;
+      return {
+        daypart: daypart as CoverageTarget["daypart"],
+        scheduled,
+        required,
+        shortage: Math.max(0, required - scheduled),
+      };
+    });
+
+    return {
+      dateValue: day.dateValue,
+      dayparts,
+      shortages: dayparts.filter((entry) => entry.shortage > 0),
+    };
+  });
+  const weeklyCoverageWarnings = weekCoverageSummaries.filter((day) => day.shortages.length > 0);
+  const totalCoverageShortage = weeklyCoverageWarnings.reduce(
+    (total, day) => total + day.shortages.reduce((dayTotal, entry) => dayTotal + entry.shortage, 0),
+    0,
+  );
   const scheduledEmployeeCount = new Set(weeklyShifts.map((shift) => shift.employee_id)).size;
   const weeklyHours = weeklyShifts.reduce((total, shift) => total + getShiftHours(shift), 0);
   const publishedWeeklyShifts = weeklyShifts.filter((shift) => shift.is_published);
@@ -1892,9 +1981,13 @@ export default function App() {
                         <span>{draftWeeklyShifts.length}</span>
                         <p>Draft</p>
                       </div>
+                      <div className="metric">
+                        <span>{totalCoverageShortage}</span>
+                        <p>Open Coverage Spots</p>
+                      </div>
                     </div>
 
-                    {scheduleConflictSummaries.length > 0 || overtimeWarnings.length > 0 ? (
+                    {scheduleConflictSummaries.length > 0 || overtimeWarnings.length > 0 || weeklyCoverageWarnings.length > 0 ? (
                       <div className="planner-alerts">
                         {scheduleConflictSummaries.map((day) => (
                           <div className="planner-alert-card" key={day.dateValue}>
@@ -1908,6 +2001,16 @@ export default function App() {
                           <div className="planner-alert-card" key={warning.employee.id}>
                             <strong>{warning.employee.full_name}</strong>
                             <p>{warning.hours.toFixed(1)} scheduled hours this week may trigger overtime.</p>
+                          </div>
+                        ))}
+                        {weeklyCoverageWarnings.map((day) => (
+                          <div className="planner-alert-card" key={`coverage-${day.dateValue}`}>
+                            <strong>{formatScheduleDayLabel(day.dateValue)}</strong>
+                            {day.shortages.map((entry) => (
+                              <p key={`${day.dateValue}-${entry.daypart}`}>
+                                {coverageDaypartLabel(entry.daypart)} needs {entry.shortage} more team member(s) to reach {entry.required}.
+                              </p>
+                            ))}
                           </div>
                         ))}
                       </div>
@@ -1966,8 +2069,17 @@ export default function App() {
                                 const employee = employeeOptions.find((item) => item.id === request.employee_id);
                                 return (
                                   <div className="mini-request availability-suggestion" key={request.id}>
-                                    <strong>{employee?.full_name ?? `Employee ${request.employee_id}`}</strong>
-                                    <span>{request.start_time} - {request.end_time}</span>
+                                    <div className="mini-request-copy">
+                                      <strong>{employee?.full_name ?? `Employee ${request.employee_id}`}</strong>
+                                      <span>{request.start_time} - {request.end_time}</span>
+                                    </div>
+                                    <button
+                                      className="ghost-button mini-action-button"
+                                      type="button"
+                                      onClick={() => prepareShiftFromAvailability(request, day.dateValue)}
+                                    >
+                                      Use
+                                    </button>
                                   </div>
                                 );
                               })}
@@ -1975,8 +2087,13 @@ export default function App() {
                           ) : null}
 
                           <div className="day-shift-list">
-                            {scheduleConflictSummaries.find((item) => item.dateValue === day.dateValue) ? (
-                              <div className="day-warning-banner">Conflicts detected for this day.</div>
+                            {scheduleConflictSummaries.find((item) => item.dateValue === day.dateValue) ||
+                            weekCoverageSummaries.find((item) => item.dateValue === day.dateValue && item.shortages.length > 0) ? (
+                              <div className="day-warning-banner">
+                                {scheduleConflictSummaries.find((item) => item.dateValue === day.dateValue)
+                                  ? "Conflicts detected for this day."
+                                  : "Coverage target is short for one or more dayparts."}
+                              </div>
                             ) : null}
                             {day.shifts.length > 0 ? (
                               day.shifts.map((shift) => {
@@ -2102,6 +2219,58 @@ export default function App() {
                         })}
                       </div>
                     ) : null}
+                    <form className="schedule-sidebar-list" onSubmit={handleSaveCoverageTarget}>
+                      <strong>Staffing Targets</strong>
+                      <p className="muted-copy">Set how many people you want by daypart so the planner can flag under-covered days.</p>
+                      <div className="split-row">
+                        <select
+                          value={coverageTargetForm.weekday}
+                          onChange={(event) => setCoverageTargetForm({ ...coverageTargetForm, weekday: event.target.value })}
+                        >
+                          {Array.from({ length: 7 }, (_, index) => (
+                            <option key={index} value={index}>
+                              {weekdayLabel(index)}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={coverageTargetForm.daypart}
+                          onChange={(event) =>
+                            setCoverageTargetForm({
+                              ...coverageTargetForm,
+                              daypart: event.target.value as CoverageTarget["daypart"],
+                            })
+                          }
+                        >
+                          <option value="morning">Morning</option>
+                          <option value="lunch">Lunch</option>
+                          <option value="close">Close</option>
+                        </select>
+                      </div>
+                      <input
+                        min="0"
+                        type="number"
+                        value={coverageTargetForm.required_headcount}
+                        onChange={(event) => setCoverageTargetForm({ ...coverageTargetForm, required_headcount: event.target.value })}
+                      />
+                      <button className="primary-button" type="submit">
+                        Save Staffing Target
+                      </button>
+                      {coverageTargets.length > 0 ? (
+                        <div className="target-list">
+                          {coverageTargets.map((target) => (
+                            <div className="target-card" key={target.id}>
+                              <strong>
+                                {weekdayLabel(target.weekday)} • {coverageDaypartLabel(target.daypart)}
+                              </strong>
+                              <p>{target.required_headcount} team member(s) needed</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="empty-state">No staffing targets saved yet.</div>
+                      )}
+                    </form>
                     {pendingAvailabilityRequests.length > 0 ? (
                       <form className="schedule-sidebar-list" onSubmit={handleReviewAvailability}>
                         <strong>Pending Availability Requests</strong>

@@ -44,6 +44,12 @@ class AvailabilityStatus(str, Enum):
     DENIED = "denied"
 
 
+class CoverageDaypart(str, Enum):
+    MORNING = "morning"
+    LUNCH = "lunch"
+    CLOSE = "close"
+
+
 class Organization(Base):
     __tablename__ = "organizations"
 
@@ -58,6 +64,7 @@ class Organization(Base):
     time_entries: Mapped[list["TimeEntry"]] = relationship(back_populates="organization")
     time_off_requests: Mapped[list["TimeOffRequest"]] = relationship(back_populates="organization")
     availability_requests: Mapped[list["EmployeeAvailabilityRequest"]] = relationship(back_populates="organization")
+    coverage_targets: Mapped[list["ScheduleCoverageTarget"]] = relationship(back_populates="organization")
 
 
 class User(Base):
@@ -112,6 +119,19 @@ class ScheduleShift(Base):
 
     organization: Mapped["Organization"] = relationship(back_populates="shifts")
     employee: Mapped["User"] = relationship(back_populates="scheduled_shifts")
+
+
+class ScheduleCoverageTarget(Base):
+    __tablename__ = "schedule_coverage_targets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False)
+    daypart: Mapped[CoverageDaypart] = mapped_column(SqlEnum(CoverageDaypart), nullable=False)
+    required_headcount: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    organization: Mapped["Organization"] = relationship(back_populates="coverage_targets")
 
 
 class TimeEntry(Base):
