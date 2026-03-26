@@ -394,6 +394,79 @@ def get_authenticated_employee_for_self_service(
     return employee
 
 
+def normalize_email(email: Optional[str]) -> Optional[str]:
+    if email is None:
+        return None
+    normalized = email.strip().lower()
+    return normalized or None
+
+
+def ensure_unique_user_email(
+    organization_id: int,
+    email: Optional[str],
+    db: Session,
+    exclude_user_id: Optional[int] = None,
+) -> Optional[str]:
+    normalized_email = normalize_email(email)
+    if not normalized_email:
+        return None
+    query = select(User).where(
+        and_(
+            User.organization_id == organization_id,
+            User.email == normalized_email,
+        )
+    )
+    if exclude_user_id is not None:
+        query = query.where(User.id != exclude_user_id)
+    if db.scalar(query):
+        raise HTTPException(status_code=400, detail="That email is already in use for this organization.")
+    return normalized_email
+
+
+def ensure_unique_employee_number(
+    organization_id: int,
+    employee_number: Optional[str],
+    db: Session,
+    exclude_user_id: Optional[int] = None,
+) -> str:
+    normalized_employee_number = (employee_number or "").strip()
+    if not normalized_employee_number:
+        raise HTTPException(status_code=400, detail="Employees require employee_number and pin_code.")
+    query = (
+        select(EmployeeProfile)
+        .join(User)
+        .where(
+            and_(
+                User.organization_id == organization_id,
+                EmployeeProfile.employee_number == normalized_employee_number,
+            )
+        )
+    )
+    if exclude_user_id is not None:
+        query = query.where(User.id != exclude_user_id)
+    if db.scalar(query):
+        raise HTTPException(status_code=400, detail="That employee number is already in use for this organization.")
+    return normalized_employee_number
+
+
+def validate_employee_target_for_admin(
+    employee_id: int,
+    organization_id: int,
+    db: Session,
+) -> User:
+    return get_employee_or_404(employee_id, organization_id, db)
+
+
+def validate_optional_employee_target_for_admin(
+    employee_id: Optional[int],
+    organization_id: int,
+    db: Session,
+) -> Optional[User]:
+    if employee_id is None:
+        return None
+    return validate_employee_target_for_admin(employee_id, organization_id, db)
+
+
 def get_time_off_request_for_admin(request_id: int, current_user: User, db: Session) -> TimeOffRequest:
     request = db.get(TimeOffRequest, request_id)
     if not request:
@@ -588,11 +661,12 @@ def create_user(
     validate_organization_access(payload.organization_id, current_user)
     if payload.role != UserRole.EMPLOYEE and not payload.password:
         raise HTTPException(status_code=400, detail="Non-employee users require a password.")
+    normalized_email = ensure_unique_user_email(payload.organization_id, payload.email, db)
 
     user = User(
         organization_id=payload.organization_id,
         full_name=payload.full_name,
-        email=payload.email,
+        email=normalized_email,
         role=payload.role,
         password_hash=hash_password(payload.password) if payload.password else None,
     )
@@ -600,14 +674,15 @@ def create_user(
     db.flush()
 
     if payload.role == UserRole.EMPLOYEE:
-        if not payload.employee_number or not payload.pin_code:
+        if not payload.pin_code:
             raise HTTPException(status_code=400, detail="Employees require employee_number and pin_code.")
+        normalized_employee_number = ensure_unique_employee_number(payload.organization_id, payload.employee_number, db)
         db.add(
             EmployeeProfile(
                 user_id=user.id,
-                employee_number=payload.employee_number,
-                pin_code=payload.pin_code,
-                job_title=payload.job_title,
+                employee_number=normalized_employee_number,
+                pin_code=payload.pin_code.strip(),
+                job_title=payload.job_title.strip() if payload.job_title else None,
             )
         )
 
@@ -636,7 +711,7 @@ def update_user(
 ):
     user = get_user_for_admin(user_id, current_user, db)
     user.full_name = payload.full_name
-    user.email = payload.email
+    user.email = ensure_unique_user_email(user.organization_id, payload.email, db, exclude_user_id=user.id)
     user.is_active = payload.is_active
 
     if payload.password:
@@ -644,11 +719,11 @@ def update_user(
 
     if user.role == UserRole.EMPLOYEE:
         profile = get_employee_profile_or_404(user.id, db)
-        if not payload.employee_number or not payload.pin_code:
+        if not payload.pin_code:
             raise HTTPException(status_code=400, detail="Employees require employee_number and pin_code.")
-        profile.employee_number = payload.employee_number
-        profile.pin_code = payload.pin_code
-        profile.job_title = payload.job_title
+        profile.employee_number = ensure_unique_employee_number(user.organization_id, payload.employee_number, db, exclude_user_id=user.id)
+        profile.pin_code = payload.pin_code.strip()
+        profile.job_title = payload.job_title.strip() if payload.job_title else None
 
     db.commit()
     db.refresh(user)
@@ -677,6 +752,9 @@ def create_shift(
     current_user: User = Depends(require_admin_user),
 ):
     validate_organization_access(payload.organization_id, current_user)
+    validate_employee_target_for_admin(payload.employee_id, payload.organization_id, db)
+    if payload.end_at <= payload.start_at:
+        raise HTTPException(status_code=400, detail="Shift end must be after shift start.")
     shift = ScheduleShift(**payload.model_dump(), is_published=False, published_at=None, published_by_name=None)
     db.add(shift)
     db.commit()
@@ -705,6 +783,9 @@ def update_shift(
     current_user: User = Depends(require_admin_user),
 ):
     shift = get_shift_for_admin(shift_id, current_user, db)
+    validate_employee_target_for_admin(payload.employee_id, shift.organization_id, db)
+    if payload.end_at <= payload.start_at:
+        raise HTTPException(status_code=400, detail="Shift end must be after shift start.")
     shift.employee_id = payload.employee_id
     shift.shift_date = payload.shift_date
     shift.start_at = payload.start_at
@@ -1450,6 +1531,7 @@ def create_note(
     current_user: User = Depends(require_admin_user),
 ):
     validate_organization_access(payload.organization_id, current_user)
+    validate_optional_employee_target_for_admin(payload.employee_id, payload.organization_id, db)
     note = ManagerNote(**payload.model_dump())
     db.add(note)
     db.commit()
@@ -1478,6 +1560,7 @@ def update_note(
     current_user: User = Depends(require_admin_user),
 ):
     note = get_note_for_admin(note_id, current_user, db)
+    validate_optional_employee_target_for_admin(payload.employee_id, note.organization_id, db)
     note.employee_id = payload.employee_id
     note.title = payload.title
     note.body = payload.body

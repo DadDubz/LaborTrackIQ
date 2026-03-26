@@ -1656,7 +1656,7 @@ export default function App() {
   const employeeLatestScheduleAcknowledged = employeeLatestPublishedWeekStart
     ? employeeAcknowledgedWeeks.has(employeeLatestPublishedWeekStart)
     : false;
-  const employeeOptions = employees.filter((employee) => employee.role === "employee");
+  const employeeOptions = employees.filter((employee) => employee.role === "employee" && employee.is_active);
   const quickBooksIntegration = integrations.find((integration) => integration.provider === "quickbooks");
   const scheduleWeekDays = Array.from({ length: 7 }, (_, index) => addDays(scheduleWeekStart, index));
   const scheduleWeekEnd = scheduleWeekDays[scheduleWeekDays.length - 1];
