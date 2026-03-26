@@ -350,6 +350,27 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         finally:
             settings.allow_demo_bootstrap = original_value
 
+    def test_shift_date_must_match_start_and_end_datetimes(self):
+        headers = self.admin_headers()
+        shift_day = date.today() + timedelta(days=4)
+        mismatched_start = datetime.combine(shift_day, datetime.min.time()).replace(hour=9).isoformat() + "Z"
+        mismatched_end = datetime.combine(shift_day + timedelta(days=1), datetime.min.time()).replace(hour=17).isoformat() + "Z"
+
+        response = self.client.post(
+            "/api/shifts",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "shift_date": shift_day.isoformat(),
+                "start_at": mismatched_start,
+                "end_at": mismatched_end,
+                "location_name": "Main Store",
+                "role_label": "Front Counter",
+            },
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+
 
 if __name__ == "__main__":
     unittest.main()

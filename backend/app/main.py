@@ -474,6 +474,13 @@ def validate_optional_employee_target_for_admin(
     return validate_employee_target_for_admin(employee_id, organization_id, db)
 
 
+def validate_shift_window(shift_date: date, start_at: datetime, end_at: datetime) -> None:
+    if end_at <= start_at:
+        raise HTTPException(status_code=400, detail="Shift end must be after shift start.")
+    if start_at.date() != shift_date or end_at.date() != shift_date:
+        raise HTTPException(status_code=400, detail="Shift start/end must match the selected shift date.")
+
+
 def get_time_off_request_for_admin(request_id: int, current_user: User, db: Session) -> TimeOffRequest:
     request = db.get(TimeOffRequest, request_id)
     if not request:
@@ -760,8 +767,7 @@ def create_shift(
 ):
     validate_organization_access(payload.organization_id, current_user)
     validate_employee_target_for_admin(payload.employee_id, payload.organization_id, db)
-    if payload.end_at <= payload.start_at:
-        raise HTTPException(status_code=400, detail="Shift end must be after shift start.")
+    validate_shift_window(payload.shift_date, payload.start_at, payload.end_at)
     shift = ScheduleShift(**payload.model_dump(), is_published=False, published_at=None, published_by_name=None)
     db.add(shift)
     db.commit()
@@ -791,8 +797,7 @@ def update_shift(
 ):
     shift = get_shift_for_admin(shift_id, current_user, db)
     validate_employee_target_for_admin(payload.employee_id, shift.organization_id, db)
-    if payload.end_at <= payload.start_at:
-        raise HTTPException(status_code=400, detail="Shift end must be after shift start.")
+    validate_shift_window(payload.shift_date, payload.start_at, payload.end_at)
     shift.employee_id = payload.employee_id
     shift.shift_date = payload.shift_date
     shift.start_at = payload.start_at
