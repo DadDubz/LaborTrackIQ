@@ -59,6 +59,20 @@ class UserUpdate(BaseModel):
     is_active: bool = True
 
 
+class EmployeeSelfProfileRead(BaseModel):
+    employee_id: int
+    full_name: str
+    employee_number: Optional[str] = None
+    job_title: Optional[str] = None
+    preferred_weekly_hours: Optional[int] = None
+    preferred_shift_notes: Optional[str] = None
+
+
+class EmployeeSelfProfileUpdate(BaseModel):
+    preferred_weekly_hours: Optional[int] = None
+    preferred_shift_notes: Optional[str] = None
+
+
 class ShiftCreate(BaseModel):
     organization_id: int
     employee_id: int
@@ -149,9 +163,12 @@ class ScheduleRestoreResponse(BaseModel):
 class AvailabilityRequestCreate(BaseModel):
     organization_id: int
     employee_id: int
-    weekday: int
+    weekday: Optional[int] = None
     start_time: str
     end_time: str
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    note: Optional[str] = None
 
 
 class AvailabilityRequestRead(BaseModel):
@@ -160,9 +177,12 @@ class AvailabilityRequestRead(BaseModel):
     id: int
     organization_id: int
     employee_id: int
-    weekday: int
+    weekday: Optional[int]
     start_time: str
     end_time: str
+    start_date: Optional[date]
+    end_date: Optional[date]
+    note: Optional[str]
     status: AvailabilityStatus
     manager_response: Optional[str]
     created_at: datetime
@@ -381,6 +401,8 @@ class NotificationRead(BaseModel):
     title: str
     detail: str
     created_at: Optional[datetime] = None
+    target_tab: Optional[str] = None
+    target_id: Optional[int] = None
 
 
 class SetupChecklistItem(BaseModel):

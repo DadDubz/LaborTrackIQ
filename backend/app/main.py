@@ -43,6 +43,8 @@ from app.schemas import (
     ClockLookupResponse,
     ClockResponse,
     DashboardSummary,
+    EmployeeSelfProfileRead,
+    EmployeeSelfProfileUpdate,
     IntegrationConnectionCreate,
     IntegrationConnectionRead,
     LoginRequest,
@@ -110,6 +112,18 @@ def ensure_schedule_shift_publish_columns() -> None:
         coverage_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(schedule_coverage_targets)"))}
         if coverage_columns and "role_label" not in coverage_columns:
             connection.execute(text("ALTER TABLE schedule_coverage_targets ADD COLUMN role_label VARCHAR(120)"))
+        profile_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(employee_profiles)"))}
+        if profile_columns and "preferred_weekly_hours" not in profile_columns:
+            connection.execute(text("ALTER TABLE employee_profiles ADD COLUMN preferred_weekly_hours INTEGER"))
+        if profile_columns and "preferred_shift_notes" not in profile_columns:
+            connection.execute(text("ALTER TABLE employee_profiles ADD COLUMN preferred_shift_notes TEXT"))
+        availability_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(employee_availability_requests)"))}
+        if availability_columns and "start_date" not in availability_columns:
+            connection.execute(text("ALTER TABLE employee_availability_requests ADD COLUMN start_date DATE"))
+        if availability_columns and "end_date" not in availability_columns:
+            connection.execute(text("ALTER TABLE employee_availability_requests ADD COLUMN end_date DATE"))
+        if availability_columns and "note" not in availability_columns:
+            connection.execute(text("ALTER TABLE employee_availability_requests ADD COLUMN note TEXT"))
 
 
 ensure_schedule_shift_publish_columns()
@@ -222,6 +236,23 @@ def weekday_label(value: int) -> str:
     return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][value] if 0 <= value <= 6 else "Day"
 
 
+def serialize_availability_request(request: EmployeeAvailabilityRequest) -> AvailabilityRequestRead:
+    return AvailabilityRequestRead(
+        id=request.id,
+        organization_id=request.organization_id,
+        employee_id=request.employee_id,
+        weekday=request.weekday if request.weekday >= 0 else None,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        note=request.note,
+        status=request.status,
+        manager_response=request.manager_response,
+        created_at=request.created_at,
+    )
+
+
 def build_coverage_shortages(
     shifts: list[ScheduleShift],
     coverage_targets: list[ScheduleCoverageTarget],
@@ -278,6 +309,18 @@ def serialize_user(user: User) -> UserRead:
         is_active=user.is_active,
         employee_number=profile.employee_number if profile else None,
         job_title=profile.job_title if profile else None,
+    )
+
+
+def serialize_employee_self_profile(employee: User, db: Session) -> EmployeeSelfProfileRead:
+    profile = get_employee_profile_or_404(employee.id, db)
+    return EmployeeSelfProfileRead(
+        employee_id=employee.id,
+        full_name=employee.full_name,
+        employee_number=profile.employee_number,
+        job_title=profile.job_title,
+        preferred_weekly_hours=profile.preferred_weekly_hours,
+        preferred_shift_notes=profile.preferred_shift_notes,
     )
 
 
@@ -379,6 +422,8 @@ def build_admin_notifications(organization_id: int, db: Session) -> list[Notific
                 title=f"Time-off request from {employee.full_name if employee else f'Employee {request.employee_id}'}",
                 detail=f"{request.start_date.isoformat()} to {request.end_date.isoformat()}",
                 created_at=request.created_at,
+                target_tab="requests",
+                target_id=request.id,
             )
         )
 
@@ -400,8 +445,14 @@ def build_admin_notifications(organization_id: int, db: Session) -> list[Notific
                 key=f"availability-{request.id}",
                 category="availability",
                 title=f"Availability request from {employee.full_name if employee else f'Employee {request.employee_id}'}",
-                detail=f"{weekday_label(request.weekday)} {request.start_time}-{request.end_time}",
+                detail=(
+                    f"{weekday_label(request.weekday)} {request.start_time}-{request.end_time}"
+                    if request.weekday >= 0
+                    else f"{request.start_date.isoformat() if request.start_date else 'Date'} to {request.end_date.isoformat() if request.end_date else 'Date'}"
+                ),
                 created_at=request.created_at,
+                target_tab="schedules",
+                target_id=request.id,
             )
         )
 
@@ -419,6 +470,8 @@ def build_admin_notifications(organization_id: int, db: Session) -> list[Notific
                 title=f"{request.request_type.value.title()} request from {serialize_shift_change_request(request, db).requester_name}",
                 detail=request.note,
                 created_at=request.created_at,
+                target_tab="requests",
+                target_id=request.id,
             )
         )
 
@@ -930,6 +983,31 @@ def list_employee_time_off_requests(employee_id: int, db: Session = Depends(get_
     return list(requests)
 
 
+@app.get(f"{settings.api_prefix}/employees/{{employee_id}}/profile", response_model=EmployeeSelfProfileRead)
+def get_employee_self_profile(employee_id: int, db: Session = Depends(get_db)):
+    employee = db.get(User, employee_id)
+    if not employee or employee.role != UserRole.EMPLOYEE:
+        raise HTTPException(status_code=404, detail="Employee not found.")
+    return serialize_employee_self_profile(employee, db)
+
+
+@app.put(f"{settings.api_prefix}/employees/{{employee_id}}/profile", response_model=EmployeeSelfProfileRead)
+def update_employee_self_profile(
+    employee_id: int,
+    payload: EmployeeSelfProfileUpdate,
+    db: Session = Depends(get_db),
+):
+    employee = db.get(User, employee_id)
+    if not employee or employee.role != UserRole.EMPLOYEE:
+        raise HTTPException(status_code=404, detail="Employee not found.")
+    profile = get_employee_profile_or_404(employee_id, db)
+    profile.preferred_weekly_hours = payload.preferred_weekly_hours
+    profile.preferred_shift_notes = payload.preferred_shift_notes
+    db.commit()
+    db.refresh(profile)
+    return serialize_employee_self_profile(employee, db)
+
+
 @app.get(f"{settings.api_prefix}/employees/{{employee_id}}/shift-change-requests", response_model=list[ShiftChangeRequestRead])
 def list_employee_shift_change_requests(employee_id: int, db: Session = Depends(get_db)):
     requests = db.scalars(
@@ -970,25 +1048,33 @@ def list_employee_availability_requests(employee_id: int, db: Session = Depends(
         .where(EmployeeAvailabilityRequest.employee_id == employee_id)
         .order_by(EmployeeAvailabilityRequest.created_at.desc())
     ).all()
-    return list(requests)
+    return [serialize_availability_request(request) for request in requests]
 
 
 @app.post(f"{settings.api_prefix}/availability-requests", response_model=AvailabilityRequestRead)
 def create_availability_request(payload: AvailabilityRequestCreate, db: Session = Depends(get_db)):
     employee = get_employee_or_404(payload.employee_id, payload.organization_id, db)
-    if payload.weekday < 0 or payload.weekday > 6:
+    if payload.weekday is None and (payload.start_date is None or payload.end_date is None):
+        raise HTTPException(status_code=400, detail="Provide either a weekday or a start and end date.")
+    if payload.weekday is not None and (payload.weekday < 0 or payload.weekday > 6):
         raise HTTPException(status_code=400, detail="weekday must be between 0 and 6.")
+    if payload.start_date and payload.end_date and payload.end_date < payload.start_date:
+        raise HTTPException(status_code=400, detail="end_date must be on or after start_date.")
+    stored_weekday = payload.weekday if payload.weekday is not None else -1
     request = EmployeeAvailabilityRequest(
         organization_id=payload.organization_id,
         employee_id=employee.id,
-        weekday=payload.weekday,
+        weekday=stored_weekday,
         start_time=payload.start_time,
         end_time=payload.end_time,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        note=payload.note,
     )
     db.add(request)
     db.commit()
     db.refresh(request)
-    return request
+    return serialize_availability_request(request)
 
 
 @app.post(f"{settings.api_prefix}/shift-change-requests", response_model=ShiftChangeRequestRead)
@@ -1050,7 +1136,7 @@ def list_org_availability_requests(
         .where(EmployeeAvailabilityRequest.organization_id == organization_id)
         .order_by(EmployeeAvailabilityRequest.created_at.desc())
     ).all()
-    return list(requests)
+    return [serialize_availability_request(request) for request in requests]
 
 
 @app.put(f"{settings.api_prefix}/availability-requests/{{request_id}}", response_model=AvailabilityRequestRead)
@@ -1068,7 +1154,7 @@ def update_availability_request(
     request.manager_response = payload.manager_response
     db.commit()
     db.refresh(request)
-    return request
+    return serialize_availability_request(request)
 
 
 @app.get(

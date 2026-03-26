@@ -111,9 +111,12 @@ type AvailabilityRequest = {
   id: number;
   organization_id: number;
   employee_id: number;
-  weekday: number;
+  weekday: number | null;
   start_time: string;
   end_time: string;
+  start_date: string | null;
+  end_date: string | null;
+  note: string | null;
   status: string;
   manager_response: string | null;
   created_at: string;
@@ -201,10 +204,21 @@ type NotificationItem = {
   title: string;
   detail: string;
   created_at: string | null;
+  target_tab: string | null;
+  target_id: number | null;
+};
+
+type EmployeeSelfProfile = {
+  employee_id: number;
+  full_name: string;
+  employee_number: string | null;
+  job_title: string | null;
+  preferred_weekly_hours: number | null;
+  preferred_shift_notes: string | null;
 };
 
 type AdminTab = "setup" | "employees" | "schedules" | "notes" | "requests" | "integrations";
-type EmployeeTab = "home" | "schedule" | "request_off" | "availability" | "shift_changes";
+type EmployeeTab = "home" | "schedule" | "request_off" | "availability" | "shift_changes" | "profile";
 type KeypadField = "employee" | "pin";
 type RequestQueueTab = "pending" | "approved";
 type RequestBoardTab = "time_off" | "shift_changes";
@@ -344,6 +358,7 @@ export default function App() {
   const [employeeAvailabilityRequests, setEmployeeAvailabilityRequests] = useState<AvailabilityRequest[]>([]);
   const [employeeShiftChangeRequests, setEmployeeShiftChangeRequests] = useState<ShiftChangeRequest[]>([]);
   const [employeeScheduleAcknowledgments, setEmployeeScheduleAcknowledgments] = useState<ScheduleAcknowledgment[]>([]);
+  const [employeeProfile, setEmployeeProfile] = useState<EmployeeSelfProfile | null>(null);
   const [requestOffForm, setRequestOffForm] = useState({
     start_date: new Date().toISOString().slice(0, 10),
     end_date: new Date().toISOString().slice(0, 10),
@@ -351,9 +366,17 @@ export default function App() {
   });
   const [requestOffMessage, setRequestOffMessage] = useState("");
   const [availabilityForm, setAvailabilityForm] = useState({
+    mode: "recurring" as "recurring" | "date_range",
     weekday: String(new Date().getDay()),
     start_time: "09:00",
     end_time: "17:00",
+    start_date: new Date().toISOString().slice(0, 10),
+    end_date: new Date().toISOString().slice(0, 10),
+    note: "",
+  });
+  const [employeeProfileForm, setEmployeeProfileForm] = useState({
+    preferred_weekly_hours: "",
+    preferred_shift_notes: "",
   });
 
   const [adminEmail, setAdminEmail] = useState("admin@demodiner.com");
@@ -589,6 +612,19 @@ export default function App() {
     }
   }
 
+  async function loadEmployeeProfile(employeeId: number) {
+    try {
+      const data = (await apiFetch(`/employees/${employeeId}/profile`, {}, "")) as EmployeeSelfProfile;
+      setEmployeeProfile(data);
+      setEmployeeProfileForm({
+        preferred_weekly_hours: data.preferred_weekly_hours ? String(data.preferred_weekly_hours) : "",
+        preferred_shift_notes: data.preferred_shift_notes ?? "",
+      });
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Unable to load employee profile.");
+    }
+  }
+
   async function loadPickupBoard(employeeId: number) {
     try {
       const data = (await apiFetch(`/employees/${employeeId}/pickup-board`, {}, "")) as ShiftChangeRequest[];
@@ -769,6 +805,7 @@ export default function App() {
       await loadEmployeeRequests(data.employee_id);
       await loadEmployeeAvailabilityRequests(data.employee_id);
       await loadEmployeeShiftChangeRequests(data.employee_id);
+      await loadEmployeeProfile(data.employee_id);
       await loadPickupBoard(data.employee_id);
       await loadEmployeeScheduleAcknowledgments(data.employee_id);
       if (token) {
@@ -789,6 +826,7 @@ export default function App() {
     setEmployeeRequests([]);
     setEmployeeAvailabilityRequests([]);
     setEmployeeShiftChangeRequests([]);
+    setEmployeeProfile(null);
     setPickupBoard([]);
     setEmployeeScheduleAcknowledgments([]);
     setPinCode("");
@@ -871,9 +909,12 @@ export default function App() {
           body: JSON.stringify({
             organization_id: Number(organizationId),
             employee_id: employeePortal.employee_id,
-            weekday: Number(availabilityForm.weekday),
+            weekday: availabilityForm.mode === "recurring" ? Number(availabilityForm.weekday) : null,
             start_time: availabilityForm.start_time,
             end_time: availabilityForm.end_time,
+            start_date: availabilityForm.mode === "date_range" ? availabilityForm.start_date : null,
+            end_date: availabilityForm.mode === "date_range" ? availabilityForm.end_date : null,
+            note: availabilityForm.note || null,
           }),
         },
         "",
@@ -882,6 +923,33 @@ export default function App() {
       await loadEmployeeAvailabilityRequests(employeePortal.employee_id);
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to submit availability request.");
+    }
+  }
+
+  async function handleEmployeeProfileSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!employeePortal) {
+      return;
+    }
+    setEmployeeError("");
+    try {
+      const data = (await apiFetch(
+        `/employees/${employeePortal.employee_id}/profile`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            preferred_weekly_hours: employeeProfileForm.preferred_weekly_hours
+              ? Number(employeeProfileForm.preferred_weekly_hours)
+              : null,
+            preferred_shift_notes: employeeProfileForm.preferred_shift_notes || null,
+          }),
+        },
+        "",
+      )) as EmployeeSelfProfile;
+      setEmployeeProfile(data);
+      setRequestOffMessage("Profile preferences updated.");
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Unable to update employee preferences.");
     }
   }
 
@@ -1518,7 +1586,11 @@ export default function App() {
           timeOff.start_date <= dateValue &&
           timeOff.end_date >= dateValue,
       );
-      return request.status === "approved" && request.weekday === weekday && !employeeScheduled && !employeeOff;
+      const matchesDate =
+        request.weekday !== null
+          ? request.weekday === weekday
+          : Boolean(request.start_date && request.end_date && request.start_date <= dateValue && request.end_date >= dateValue);
+      return request.status === "approved" && matchesDate && !employeeScheduled && !employeeOff;
     }),
   }));
   const weekCoverageSummaries = weekSchedule.map((day) => {
@@ -1663,6 +1735,55 @@ export default function App() {
   const pendingAvailabilityRequests = orgAvailabilityRequests.filter((request) => request.status === "pending");
   const recentSchedulePublications = schedulePublications.slice(0, 6);
 
+  function handleNotificationClick(item: NotificationItem) {
+    if (item.category === "availability") {
+      setAdminTab("schedules");
+      if (item.target_id) {
+        const request = orgAvailabilityRequests.find((entry) => entry.id === item.target_id);
+        if (request) {
+          setAvailabilityReviewForm({
+            id: request.id,
+            status: request.status,
+            manager_response: request.manager_response ?? "",
+          });
+        }
+      }
+      return;
+    }
+    if (item.category === "time_off") {
+      setAdminTab("requests");
+      setRequestBoardTab("time_off");
+      setRequestQueueTab("pending");
+      if (item.target_id) {
+        const request = orgTimeOffRequests.find((entry) => entry.id === item.target_id);
+        if (request) {
+          setRequestReviewForm({
+            id: request.id,
+            status: request.status,
+            manager_response: request.manager_response ?? "",
+          });
+        }
+      }
+      return;
+    }
+    if (item.category === "shift_change") {
+      setAdminTab("requests");
+      setRequestBoardTab("shift_changes");
+      setRequestQueueTab("pending");
+      if (item.target_id) {
+        const request = orgShiftChangeRequests.find((entry) => entry.id === item.target_id);
+        if (request) {
+          setShiftChangeReviewForm({
+            id: request.id,
+            status: request.status,
+            manager_response: request.manager_response ?? "",
+            replacement_employee_id: request.replacement_employee_id ? String(request.replacement_employee_id) : "",
+          });
+        }
+      }
+    }
+  }
+
   return (
     <div className="app-shell">
       <section className="brand-banner panel">
@@ -1769,7 +1890,7 @@ export default function App() {
             </div>
 
             <div className="tab-row">
-              {(["home", "schedule", "shift_changes", "request_off", "availability"] as EmployeeTab[]).map((tab) => (
+              {(["home", "schedule", "shift_changes", "request_off", "availability", "profile"] as EmployeeTab[]).map((tab) => (
                 <button
                   key={tab}
                   className={employeeTab === tab ? "tab active-tab" : "tab"}
@@ -1780,8 +1901,10 @@ export default function App() {
                     ? "Request Off"
                     : tab === "availability"
                       ? "Availability"
-                      : tab === "shift_changes"
+                    : tab === "shift_changes"
                         ? "Shift Changes"
+                        : tab === "profile"
+                          ? "Profile"
                         : tab[0].toUpperCase() + tab.slice(1)}
                 </button>
               ))}
@@ -1944,14 +2067,41 @@ export default function App() {
             {employeeTab === "availability" ? (
               <div className="employee-grid">
                 <form className="stack-form" onSubmit={handleAvailabilitySubmit}>
-                  <h4>Recurring Availability</h4>
-                  <select value={availabilityForm.weekday} onChange={(event) => setAvailabilityForm({ ...availabilityForm, weekday: event.target.value })}>
-                    {Array.from({ length: 7 }, (_, value) => (
-                      <option key={value} value={value}>
-                        {weekdayLabel(value)}
-                      </option>
-                    ))}
+                  <h4>Availability</h4>
+                  <select
+                    value={availabilityForm.mode}
+                    onChange={(event) =>
+                      setAvailabilityForm({
+                        ...availabilityForm,
+                        mode: event.target.value as "recurring" | "date_range",
+                      })
+                    }
+                  >
+                    <option value="recurring">Recurring Weekly Availability</option>
+                    <option value="date_range">Date-Specific Availability</option>
                   </select>
+                  {availabilityForm.mode === "recurring" ? (
+                    <select value={availabilityForm.weekday} onChange={(event) => setAvailabilityForm({ ...availabilityForm, weekday: event.target.value })}>
+                      {Array.from({ length: 7 }, (_, value) => (
+                        <option key={value} value={value}>
+                          {weekdayLabel(value)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="split-row">
+                      <input
+                        type="date"
+                        value={availabilityForm.start_date}
+                        onChange={(event) => setAvailabilityForm({ ...availabilityForm, start_date: event.target.value })}
+                      />
+                      <input
+                        type="date"
+                        value={availabilityForm.end_date}
+                        onChange={(event) => setAvailabilityForm({ ...availabilityForm, end_date: event.target.value })}
+                      />
+                    </div>
+                  )}
                   <div className="split-row">
                     <input
                       type="time"
@@ -1964,6 +2114,11 @@ export default function App() {
                       onChange={(event) => setAvailabilityForm({ ...availabilityForm, end_time: event.target.value })}
                     />
                   </div>
+                  <textarea
+                    placeholder="Optional note for your manager"
+                    value={availabilityForm.note}
+                    onChange={(event) => setAvailabilityForm({ ...availabilityForm, note: event.target.value })}
+                  />
                   <button className="primary-button" type="submit">
                     Submit Availability
                   </button>
@@ -1974,8 +2129,11 @@ export default function App() {
                     employeeAvailabilityRequests.map((request) => (
                       <div className="entity-card" key={request.id}>
                         <strong>
-                          {weekdayLabel(request.weekday)} • {request.start_time} - {request.end_time}
+                          {request.weekday !== null
+                            ? `${weekdayLabel(request.weekday)} • ${request.start_time} - ${request.end_time}`
+                            : `${formatDate(request.start_date ?? "")} to ${formatDate(request.end_date ?? "")} • ${request.start_time} - ${request.end_time}`}
                         </strong>
+                        {request.note ? <p>{request.note}</p> : null}
                         <p>Status: {request.status}</p>
                         {request.manager_response ? <p>Manager reply: {request.manager_response}</p> : null}
                       </div>
@@ -2094,6 +2252,41 @@ export default function App() {
                   ) : (
                     <div className="empty-state">No open pickup requests right now.</div>
                   )}
+                </div>
+              </div>
+            ) : null}
+
+            {employeeTab === "profile" ? (
+              <div className="employee-grid">
+                <form className="stack-form" onSubmit={handleEmployeeProfileSubmit}>
+                  <h4>Scheduling Preferences</h4>
+                  <input value={employeeProfile?.full_name ?? ""} disabled />
+                  <input value={employeeProfile?.job_title ?? "No job title set"} disabled />
+                  <input
+                    min="0"
+                    placeholder="Preferred weekly hours"
+                    type="number"
+                    value={employeeProfileForm.preferred_weekly_hours}
+                    onChange={(event) => setEmployeeProfileForm({ ...employeeProfileForm, preferred_weekly_hours: event.target.value })}
+                  />
+                  <textarea
+                    placeholder="Preferred shifts, availability notes, or scheduling preferences"
+                    value={employeeProfileForm.preferred_shift_notes}
+                    onChange={(event) => setEmployeeProfileForm({ ...employeeProfileForm, preferred_shift_notes: event.target.value })}
+                  />
+                  <button className="primary-button" type="submit">
+                    Save Preferences
+                  </button>
+                </form>
+
+                <div className="scroll-list">
+                  <div className="entity-card">
+                    <strong>Profile Snapshot</strong>
+                    <p>Employee #: {employeeProfile?.employee_number ?? "Not set"}</p>
+                    <p>Job Title: {employeeProfile?.job_title ?? "Not set"}</p>
+                    <p>Preferred Weekly Hours: {employeeProfile?.preferred_weekly_hours ?? "Not set"}</p>
+                    <p>{employeeProfile?.preferred_shift_notes ?? "No scheduling preferences saved yet."}</p>
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -2230,11 +2423,11 @@ export default function App() {
                       <strong>Notification Center</strong>
                       {notifications.length > 0 ? (
                         notifications.map((item) => (
-                          <div className="entity-card" key={item.key}>
+                          <button className="entity-card entity-button" key={item.key} type="button" onClick={() => handleNotificationClick(item)}>
                             <strong>{item.title}</strong>
                             <p>{item.detail}</p>
                             {item.created_at ? <p>{new Date(item.created_at).toLocaleString()}</p> : null}
-                          </div>
+                          </button>
                         ))
                       ) : (
                         <div className="empty-state">Everything is caught up right now.</div>
@@ -2716,8 +2909,11 @@ export default function App() {
                             >
                               <strong>{employee?.full_name ?? `Employee ${request.employee_id}`}</strong>
                               <p>
-                                {weekdayLabel(request.weekday)} • {request.start_time} - {request.end_time}
+                                {request.weekday !== null
+                                  ? `${weekdayLabel(request.weekday)} • ${request.start_time} - ${request.end_time}`
+                                  : `${formatDate(request.start_date ?? "")} to ${formatDate(request.end_date ?? "")} • ${request.start_time} - ${request.end_time}`}
                               </p>
+                              {request.note ? <p>{request.note}</p> : null}
                             </button>
                           );
                         })}
