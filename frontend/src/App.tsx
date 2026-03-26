@@ -174,10 +174,30 @@ type TimeOffRequest = {
   created_at: string;
 };
 
+type ShiftChangeRequest = {
+  id: number;
+  organization_id: number;
+  shift_id: number;
+  requester_employee_id: number;
+  request_type: "pickup" | "swap";
+  note: string;
+  status: string;
+  manager_response: string | null;
+  replacement_employee_id: number | null;
+  replacement_employee_name: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  shift_date: string;
+  shift_start_at: string;
+  shift_end_at: string;
+  requester_name: string;
+};
+
 type AdminTab = "setup" | "employees" | "schedules" | "notes" | "requests" | "integrations";
-type EmployeeTab = "home" | "schedule" | "request_off" | "availability";
+type EmployeeTab = "home" | "schedule" | "request_off" | "availability" | "shift_changes";
 type KeypadField = "employee" | "pin";
 type RequestQueueTab = "pending" | "approved";
+type RequestBoardTab = "time_off" | "shift_changes";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 const SHIFT_TEMPLATES = [
@@ -312,6 +332,7 @@ export default function App() {
   const [isClockLoading, setIsClockLoading] = useState(false);
   const [employeeRequests, setEmployeeRequests] = useState<TimeOffRequest[]>([]);
   const [employeeAvailabilityRequests, setEmployeeAvailabilityRequests] = useState<AvailabilityRequest[]>([]);
+  const [employeeShiftChangeRequests, setEmployeeShiftChangeRequests] = useState<ShiftChangeRequest[]>([]);
   const [employeeScheduleAcknowledgments, setEmployeeScheduleAcknowledgments] = useState<ScheduleAcknowledgment[]>([]);
   const [requestOffForm, setRequestOffForm] = useState({
     start_date: new Date().toISOString().slice(0, 10),
@@ -338,6 +359,7 @@ export default function App() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [orgTimeOffRequests, setOrgTimeOffRequests] = useState<TimeOffRequest[]>([]);
   const [orgAvailabilityRequests, setOrgAvailabilityRequests] = useState<AvailabilityRequest[]>([]);
+  const [orgShiftChangeRequests, setOrgShiftChangeRequests] = useState<ShiftChangeRequest[]>([]);
   const [coverageTargets, setCoverageTargets] = useState<CoverageTarget[]>([]);
   const [schedulePublications, setSchedulePublications] = useState<SchedulePublication[]>([]);
   const [adminTab, setAdminTab] = useState<AdminTab>("setup");
@@ -392,6 +414,7 @@ export default function App() {
     manager_response: "",
   });
   const [requestQueueTab, setRequestQueueTab] = useState<RequestQueueTab>("pending");
+  const [requestBoardTab, setRequestBoardTab] = useState<RequestBoardTab>("time_off");
   const [draggingShiftId, setDraggingShiftId] = useState<number | null>(null);
   const [dragTargetDate, setDragTargetDate] = useState<string | null>(null);
   const [publicationForm, setPublicationForm] = useState({ id: null as number | null, comment: "" });
@@ -405,6 +428,17 @@ export default function App() {
     daypart: "lunch" as CoverageTarget["daypart"],
     role_label: "",
     required_headcount: "2",
+  });
+  const [shiftChangeForm, setShiftChangeForm] = useState({
+    shift_id: "",
+    request_type: "pickup" as ShiftChangeRequest["request_type"],
+    note: "",
+  });
+  const [shiftChangeReviewForm, setShiftChangeReviewForm] = useState({
+    id: null as number | null,
+    status: "pending",
+    manager_response: "",
+    replacement_employee_id: "",
   });
 
   useEffect(() => {
@@ -469,7 +503,7 @@ export default function App() {
 
   async function loadAdminData(accessToken: string, orgId: string) {
     try {
-      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData, publicationData, availabilityData, coverageData] = await Promise.all([
+      const [summaryData, userData, shiftData, noteData, integrationData, setupOverviewData, requestData, publicationData, availabilityData, coverageData, shiftChangeData] = await Promise.all([
         apiFetch(`/organizations/${orgId}/dashboard-summary`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/users`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/shifts`, {}, accessToken),
@@ -480,6 +514,7 @@ export default function App() {
         apiFetch(`/organizations/${orgId}/schedule/publications`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/availability-requests`, {}, accessToken),
         apiFetch(`/organizations/${orgId}/coverage-targets`, {}, accessToken),
+        apiFetch(`/organizations/${orgId}/shift-change-requests`, {}, accessToken),
       ]);
       const quickBooksConfigData = (await apiFetch(
         `/organizations/${orgId}/integrations/quickbooks/config-status`,
@@ -497,6 +532,7 @@ export default function App() {
       setSchedulePublications(publicationData as SchedulePublication[]);
       setOrgAvailabilityRequests(availabilityData as AvailabilityRequest[]);
       setCoverageTargets(coverageData as CoverageTarget[]);
+      setOrgShiftChangeRequests(shiftChangeData as ShiftChangeRequest[]);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "Unable to load admin data.");
     }
@@ -527,6 +563,15 @@ export default function App() {
       setEmployeeAvailabilityRequests(data);
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to load availability requests.");
+    }
+  }
+
+  async function loadEmployeeShiftChangeRequests(employeeId: number) {
+    try {
+      const data = (await apiFetch(`/employees/${employeeId}/shift-change-requests`, {}, "")) as ShiftChangeRequest[];
+      setEmployeeShiftChangeRequests(data);
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Unable to load shift change requests.");
     }
   }
 
@@ -700,6 +745,7 @@ export default function App() {
       setRequestOffMessage("");
       await loadEmployeeRequests(data.employee_id);
       await loadEmployeeAvailabilityRequests(data.employee_id);
+      await loadEmployeeShiftChangeRequests(data.employee_id);
       await loadEmployeeScheduleAcknowledgments(data.employee_id);
       if (token) {
         await loadAdminData(token, organizationId);
@@ -718,6 +764,7 @@ export default function App() {
     setRequestOffMessage("");
     setEmployeeRequests([]);
     setEmployeeAvailabilityRequests([]);
+    setEmployeeShiftChangeRequests([]);
     setEmployeeScheduleAcknowledgments([]);
     setPinCode("");
     setActiveKeypadField("employee");
@@ -810,6 +857,38 @@ export default function App() {
       await loadEmployeeAvailabilityRequests(employeePortal.employee_id);
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Unable to submit availability request.");
+    }
+  }
+
+  async function handleShiftChangeSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!employeePortal || !shiftChangeForm.shift_id) {
+      return;
+    }
+    setEmployeeError("");
+    try {
+      await apiFetch(
+        "/shift-change-requests",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            organization_id: Number(organizationId),
+            shift_id: Number(shiftChangeForm.shift_id),
+            requester_employee_id: employeePortal.employee_id,
+            request_type: shiftChangeForm.request_type,
+            note: shiftChangeForm.note,
+          }),
+        },
+        "",
+      );
+      setRequestOffMessage("Shift change request sent for manager review.");
+      setShiftChangeForm({ shift_id: "", request_type: "pickup", note: "" });
+      await loadEmployeeShiftChangeRequests(employeePortal.employee_id);
+      if (token) {
+        await loadAdminData(token, organizationId);
+      }
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Unable to submit shift change request.");
     }
   }
 
@@ -1326,6 +1405,30 @@ export default function App() {
     }
   }
 
+  async function handleReviewShiftChange(event: FormEvent) {
+    event.preventDefault();
+    if (!shiftChangeReviewForm.id) {
+      return;
+    }
+    setAdminError("");
+    try {
+      await apiFetch(`/shift-change-requests/${shiftChangeReviewForm.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          status: shiftChangeReviewForm.status,
+          manager_response: shiftChangeReviewForm.manager_response || null,
+          replacement_employee_id: shiftChangeReviewForm.replacement_employee_id
+            ? Number(shiftChangeReviewForm.replacement_employee_id)
+            : null,
+        }),
+      });
+      await refreshAdminData("Shift change request updated.");
+      setShiftChangeReviewForm({ id: null, status: "pending", manager_response: "", replacement_employee_id: "" });
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to update shift change request.");
+    }
+  }
+
   const employeeHomeShifts = employeePortal?.schedule.slice(0, 3) ?? [];
   const employeeNotes = employeePortal?.notes ?? [];
   const scheduleCalendar = buildScheduleCalendar(employeePortal?.schedule ?? []);
@@ -1503,6 +1606,9 @@ export default function App() {
   const pendingTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "pending");
   const approvedTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "approved");
   const visibleTimeOffRequests = requestQueueTab === "pending" ? pendingTimeOffRequests : approvedTimeOffRequests;
+  const pendingShiftChangeRequests = orgShiftChangeRequests.filter((request) => request.status === "pending");
+  const approvedShiftChangeRequests = orgShiftChangeRequests.filter((request) => request.status === "approved");
+  const visibleShiftChangeRequests = requestQueueTab === "pending" ? pendingShiftChangeRequests : approvedShiftChangeRequests;
   const pendingAvailabilityRequests = orgAvailabilityRequests.filter((request) => request.status === "pending");
   const recentSchedulePublications = schedulePublications.slice(0, 6);
 
@@ -1612,14 +1718,20 @@ export default function App() {
             </div>
 
             <div className="tab-row">
-              {(["home", "schedule", "request_off", "availability"] as EmployeeTab[]).map((tab) => (
+              {(["home", "schedule", "shift_changes", "request_off", "availability"] as EmployeeTab[]).map((tab) => (
                 <button
                   key={tab}
                   className={employeeTab === tab ? "tab active-tab" : "tab"}
                   type="button"
                   onClick={() => setEmployeeTab(tab)}
                 >
-                  {tab === "request_off" ? "Request Off" : tab === "availability" ? "Availability" : tab[0].toUpperCase() + tab.slice(1)}
+                  {tab === "request_off"
+                    ? "Request Off"
+                    : tab === "availability"
+                      ? "Availability"
+                      : tab === "shift_changes"
+                        ? "Shift Changes"
+                        : tab[0].toUpperCase() + tab.slice(1)}
                 </button>
               ))}
             </div>
@@ -1819,6 +1931,78 @@ export default function App() {
                     ))
                   ) : (
                     <div className="empty-state">No recurring availability requests submitted yet.</div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {employeeTab === "shift_changes" ? (
+              <div className="employee-grid">
+                <form className="stack-form" onSubmit={handleShiftChangeSubmit}>
+                  <h4>Shift Pickup or Swap</h4>
+                  <select value={shiftChangeForm.shift_id} onChange={(event) => setShiftChangeForm({ ...shiftChangeForm, shift_id: event.target.value })}>
+                    <option value="">Select one of your published shifts</option>
+                    {(employeePortal?.schedule ?? []).map((shift) => {
+                      const window = formatShiftWindow(shift);
+                      return (
+                        <option key={shift.id} value={shift.id}>
+                          {window.day} • {window.time}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <select
+                    value={shiftChangeForm.request_type}
+                    onChange={(event) =>
+                      setShiftChangeForm({
+                        ...shiftChangeForm,
+                        request_type: event.target.value as ShiftChangeRequest["request_type"],
+                      })
+                    }
+                  >
+                    <option value="pickup">Need Pickup</option>
+                    <option value="swap">Need Swap</option>
+                  </select>
+                  <textarea
+                    placeholder="Tell your manager what changed and who might be able to help."
+                    value={shiftChangeForm.note}
+                    onChange={(event) => setShiftChangeForm({ ...shiftChangeForm, note: event.target.value })}
+                  />
+                  <button className="primary-button" type="submit">
+                    Submit Shift Change
+                  </button>
+                </form>
+
+                <div className="scroll-list">
+                  {employeeShiftChangeRequests.length > 0 ? (
+                    employeeShiftChangeRequests.map((request) => {
+                      const shiftWindow = formatShiftWindow({
+                        id: request.shift_id,
+                        employee_id: request.requester_employee_id,
+                        shift_date: request.shift_date,
+                        start_at: request.shift_start_at,
+                        end_at: request.shift_end_at,
+                        role_label: null,
+                        location_name: null,
+                        is_published: true,
+                        published_at: null,
+                        published_by_name: null,
+                      });
+                      return (
+                        <div className="entity-card" key={request.id}>
+                          <strong>
+                            {request.request_type === "pickup" ? "Pickup Request" : "Swap Request"} • {shiftWindow.day}
+                          </strong>
+                          <p>{shiftWindow.time}</p>
+                          <p>{request.note}</p>
+                          <p>Status: {request.status}</p>
+                          {request.replacement_employee_name ? <p>Reassigned to: {request.replacement_employee_name}</p> : null}
+                          {request.manager_response ? <p>Manager reply: {request.manager_response}</p> : null}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="empty-state">No shift change requests yet.</div>
                   )}
                 </div>
               </div>
@@ -2577,18 +2761,30 @@ export default function App() {
                     <div className="panel request-overview-panel">
                       <div className="section-heading">
                         <div>
-                          <p className="eyebrow">Request Off</p>
+                          <p className="eyebrow">{requestBoardTab === "time_off" ? "Request Off" : "Shift Changes"}</p>
                           <h3>Review Queue</h3>
                         </div>
                         <p className="muted-copy">Managers can work through pending requests first, then check approved history.</p>
                       </div>
+                      <div className="tab-row">
+                        {(["time_off", "shift_changes"] as RequestBoardTab[]).map((tab) => (
+                          <button
+                            key={tab}
+                            type="button"
+                            className={tab === requestBoardTab ? "active-tab-button" : "ghost-button"}
+                            onClick={() => setRequestBoardTab(tab)}
+                          >
+                            {tab === "time_off" ? "Request Off" : "Shift Changes"}
+                          </button>
+                        ))}
+                      </div>
                       <div className="metric-grid compact-grid">
                         <div className="metric">
-                          <span>{pendingTimeOffRequests.length}</span>
+                          <span>{requestBoardTab === "time_off" ? pendingTimeOffRequests.length : pendingShiftChangeRequests.length}</span>
                           <p>Pending</p>
                         </div>
                         <div className="metric">
-                          <span>{approvedTimeOffRequests.length}</span>
+                          <span>{requestBoardTab === "time_off" ? approvedTimeOffRequests.length : approvedShiftChangeRequests.length}</span>
                           <p>Approved</p>
                         </div>
                       </div>
@@ -2600,14 +2796,16 @@ export default function App() {
                             className={tab === requestQueueTab ? "active-tab-button" : "ghost-button"}
                             onClick={() => setRequestQueueTab(tab)}
                           >
-                            {tab === "pending" ? `Pending (${pendingTimeOffRequests.length})` : `Approved (${approvedTimeOffRequests.length})`}
+                            {tab === "pending"
+                              ? `Pending (${requestBoardTab === "time_off" ? pendingTimeOffRequests.length : pendingShiftChangeRequests.length})`
+                              : `Approved (${requestBoardTab === "time_off" ? approvedTimeOffRequests.length : approvedShiftChangeRequests.length})`}
                           </button>
                         ))}
                       </div>
                     </div>
 
                     <div className="scroll-list request-list">
-                      {visibleTimeOffRequests.length > 0 ? (
+                      {requestBoardTab === "time_off" && visibleTimeOffRequests.length > 0 ? (
                         visibleTimeOffRequests.map((request) => {
                           const employee = employeeOptions.find((item) => item.id === request.employee_id);
                           return (
@@ -2635,43 +2833,137 @@ export default function App() {
                             </button>
                           );
                         })
+                      ) : null}
+                      {requestBoardTab === "shift_changes" && visibleShiftChangeRequests.length > 0 ? (
+                        visibleShiftChangeRequests.map((request) => {
+                          const shiftWindow = formatShiftWindow({
+                            id: request.shift_id,
+                            employee_id: request.requester_employee_id,
+                            shift_date: request.shift_date,
+                            start_at: request.shift_start_at,
+                            end_at: request.shift_end_at,
+                            role_label: null,
+                            location_name: null,
+                            is_published: true,
+                            published_at: null,
+                            published_by_name: null,
+                          });
+                          return (
+                            <button
+                              className="entity-card entity-button request-card"
+                              key={request.id}
+                              type="button"
+                              onClick={() =>
+                                setShiftChangeReviewForm({
+                                  id: request.id,
+                                  status: request.status,
+                                  manager_response: request.manager_response ?? "",
+                                  replacement_employee_id: request.replacement_employee_id ? String(request.replacement_employee_id) : "",
+                                })
+                              }
+                            >
+                              <div className="request-card-header">
+                                <strong>{request.requester_name}</strong>
+                                <span className={`status-pill status-${request.status}`}>{request.status}</span>
+                              </div>
+                              <p>
+                                {request.request_type === "pickup" ? "Pickup Request" : "Swap Request"} • {shiftWindow.day}
+                              </p>
+                              <p>{shiftWindow.time}</p>
+                              <p>{request.note}</p>
+                              {request.replacement_employee_name ? <p>Replacement: {request.replacement_employee_name}</p> : null}
+                              {request.manager_response ? <p>Manager reply: {request.manager_response}</p> : null}
+                            </button>
+                          );
+                        })
                       ) : (
                         <div className="empty-state">
-                          {requestQueueTab === "pending"
-                            ? "No pending request-off reviews right now."
-                            : "No approved request-off history yet."}
+                          {requestBoardTab === "time_off"
+                            ? requestQueueTab === "pending"
+                              ? "No pending request-off reviews right now."
+                              : "No approved request-off history yet."
+                            : requestQueueTab === "pending"
+                              ? "No pending shift change reviews right now."
+                              : "No approved shift change history yet."}
                         </div>
                       )}
                     </div>
                   </div>
 
-                  <form className="stack-form" onSubmit={handleReviewRequest}>
-                    <h4>{requestReviewForm.id ? "Review Selected Request" : "Select a Request"}</h4>
-                    <p className="muted-copy">
-                      Choose a request from the list, then add an optional manager reply before saving the decision.
-                    </p>
-                    <select
-                      value={requestReviewForm.status}
-                      onChange={(event) => setRequestReviewForm({ ...requestReviewForm, status: event.target.value })}
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="approved">Approved</option>
-                      <option value="denied">Denied</option>
-                    </select>
-                    <textarea
-                      placeholder="Optional manager response"
-                      value={requestReviewForm.manager_response}
-                      onChange={(event) => setRequestReviewForm({ ...requestReviewForm, manager_response: event.target.value })}
-                    />
-                    <div className="action-row">
-                      <button className="primary-button" type="submit" disabled={!requestReviewForm.id}>
-                        Save Review
-                      </button>
-                      <button className="ghost-button" type="button" onClick={resetRequestReviewForm}>
-                        Clear
-                      </button>
-                    </div>
-                  </form>
+                  {requestBoardTab === "time_off" ? (
+                    <form className="stack-form" onSubmit={handleReviewRequest}>
+                      <h4>{requestReviewForm.id ? "Review Selected Request" : "Select a Request"}</h4>
+                      <p className="muted-copy">
+                        Choose a request from the list, then add an optional manager reply before saving the decision.
+                      </p>
+                      <select
+                        value={requestReviewForm.status}
+                        onChange={(event) => setRequestReviewForm({ ...requestReviewForm, status: event.target.value })}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="denied">Denied</option>
+                      </select>
+                      <textarea
+                        placeholder="Optional manager response"
+                        value={requestReviewForm.manager_response}
+                        onChange={(event) => setRequestReviewForm({ ...requestReviewForm, manager_response: event.target.value })}
+                      />
+                      <div className="action-row">
+                        <button className="primary-button" type="submit" disabled={!requestReviewForm.id}>
+                          Save Review
+                        </button>
+                        <button className="ghost-button" type="button" onClick={resetRequestReviewForm}>
+                          Clear
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <form className="stack-form" onSubmit={handleReviewShiftChange}>
+                      <h4>{shiftChangeReviewForm.id ? "Review Selected Shift Change" : "Select a Shift Change Request"}</h4>
+                      <p className="muted-copy">Approve a replacement employee to hand off the shift, or deny the request with a reply.</p>
+                      <select
+                        value={shiftChangeReviewForm.status}
+                        onChange={(event) => setShiftChangeReviewForm({ ...shiftChangeReviewForm, status: event.target.value })}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="denied">Denied</option>
+                      </select>
+                      <select
+                        value={shiftChangeReviewForm.replacement_employee_id}
+                        onChange={(event) =>
+                          setShiftChangeReviewForm({ ...shiftChangeReviewForm, replacement_employee_id: event.target.value })
+                        }
+                      >
+                        <option value="">Select replacement employee</option>
+                        {employeeOptions.map((employee) => (
+                          <option key={employee.id} value={employee.id}>
+                            {employee.full_name}
+                          </option>
+                        ))}
+                      </select>
+                      <textarea
+                        placeholder="Optional manager response"
+                        value={shiftChangeReviewForm.manager_response}
+                        onChange={(event) =>
+                          setShiftChangeReviewForm({ ...shiftChangeReviewForm, manager_response: event.target.value })
+                        }
+                      />
+                      <div className="action-row">
+                        <button className="primary-button" type="submit" disabled={!shiftChangeReviewForm.id}>
+                          Save Review
+                        </button>
+                        <button
+                          className="ghost-button"
+                          type="button"
+                          onClick={() => setShiftChangeReviewForm({ id: null, status: "pending", manager_response: "", replacement_employee_id: "" })}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
               ) : null}
 

@@ -5,7 +5,16 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
-from app.models import AvailabilityStatus, CoverageDaypart, IntegrationProvider, IntegrationStatus, TimeOffStatus, UserRole
+from app.models import (
+    AvailabilityStatus,
+    CoverageDaypart,
+    IntegrationProvider,
+    IntegrationStatus,
+    ShiftChangeStatus,
+    ShiftChangeType,
+    TimeOffStatus,
+    UserRole,
+)
 
 
 class OrganizationCreate(BaseModel):
@@ -162,6 +171,41 @@ class AvailabilityRequestRead(BaseModel):
 class AvailabilityRequestUpdate(BaseModel):
     status: AvailabilityStatus
     manager_response: Optional[str] = None
+
+
+class ShiftChangeRequestCreate(BaseModel):
+    organization_id: int
+    shift_id: int
+    requester_employee_id: int
+    request_type: ShiftChangeType
+    note: str
+
+
+class ShiftChangeRequestUpdate(BaseModel):
+    status: ShiftChangeStatus
+    manager_response: Optional[str] = None
+    replacement_employee_id: Optional[int] = None
+
+
+class ShiftChangeRequestRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    organization_id: int
+    shift_id: int
+    requester_employee_id: int
+    request_type: ShiftChangeType
+    note: str
+    status: ShiftChangeStatus
+    manager_response: Optional[str]
+    replacement_employee_id: Optional[int]
+    created_at: datetime
+    reviewed_at: Optional[datetime]
+    shift_date: date
+    shift_start_at: datetime
+    shift_end_at: datetime
+    requester_name: str
+    replacement_employee_name: Optional[str] = None
 
 
 class CoverageTargetCreate(BaseModel):

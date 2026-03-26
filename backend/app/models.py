@@ -44,6 +44,17 @@ class AvailabilityStatus(str, Enum):
     DENIED = "denied"
 
 
+class ShiftChangeType(str, Enum):
+    PICKUP = "pickup"
+    SWAP = "swap"
+
+
+class ShiftChangeStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+
+
 class CoverageDaypart(str, Enum):
     MORNING = "morning"
     LUNCH = "lunch"
@@ -65,6 +76,7 @@ class Organization(Base):
     time_off_requests: Mapped[list["TimeOffRequest"]] = relationship(back_populates="organization")
     availability_requests: Mapped[list["EmployeeAvailabilityRequest"]] = relationship(back_populates="organization")
     coverage_targets: Mapped[list["ScheduleCoverageTarget"]] = relationship(back_populates="organization")
+    shift_change_requests: Mapped[list["ShiftChangeRequest"]] = relationship(back_populates="organization")
 
 
 class User(Base):
@@ -86,6 +98,10 @@ class User(Base):
     assigned_notes: Mapped[list["ManagerNote"]] = relationship(back_populates="employee")
     time_off_requests: Mapped[list["TimeOffRequest"]] = relationship(back_populates="employee")
     availability_requests: Mapped[list["EmployeeAvailabilityRequest"]] = relationship(back_populates="employee")
+    submitted_shift_change_requests: Mapped[list["ShiftChangeRequest"]] = relationship(
+        back_populates="requester",
+        foreign_keys="ShiftChangeRequest.requester_employee_id",
+    )
 
 
 class EmployeeProfile(Base):
@@ -223,6 +239,29 @@ class TimeOffRequest(Base):
 
     organization: Mapped["Organization"] = relationship(back_populates="time_off_requests")
     employee: Mapped["User"] = relationship(back_populates="time_off_requests")
+
+
+class ShiftChangeRequest(Base):
+    __tablename__ = "shift_change_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
+    shift_id: Mapped[int] = mapped_column(ForeignKey("schedule_shifts.id"), nullable=False, index=True)
+    requester_employee_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    request_type: Mapped[ShiftChangeType] = mapped_column(SqlEnum(ShiftChangeType), default=ShiftChangeType.PICKUP)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[ShiftChangeStatus] = mapped_column(SqlEnum(ShiftChangeStatus), default=ShiftChangeStatus.PENDING)
+    manager_response: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    replacement_employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    organization: Mapped["Organization"] = relationship(back_populates="shift_change_requests")
+    requester: Mapped["User"] = relationship(
+        back_populates="submitted_shift_change_requests",
+        foreign_keys=[requester_employee_id],
+    )
+    shift: Mapped["ScheduleShift"] = relationship(foreign_keys=[shift_id])
 
 
 class SchedulePublicationEvent(Base):

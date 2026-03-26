@@ -23,6 +23,8 @@ from app.models import (
     ScheduleCoverageTarget,
     SchedulePublicationEvent,
     ScheduleShift,
+    ShiftChangeRequest,
+    ShiftChangeStatus,
     TimeEntry,
     TimeOffRequest,
     User,
@@ -59,6 +61,9 @@ from app.schemas import (
     SchedulePublishRequest,
     SchedulePublishResponse,
     ScheduleRestoreResponse,
+    ShiftChangeRequestCreate,
+    ShiftChangeRequestRead,
+    ShiftChangeRequestUpdate,
     ShiftCreate,
     ShiftRead,
     ShiftUpdate,
@@ -319,6 +324,32 @@ def get_time_off_request_for_admin(request_id: int, current_user: User, db: Sess
         raise HTTPException(status_code=404, detail="Time-off request not found.")
     validate_organization_access(request.organization_id, current_user)
     return request
+
+
+def serialize_shift_change_request(request: ShiftChangeRequest, db: Session) -> ShiftChangeRequestRead:
+    shift = db.get(ScheduleShift, request.shift_id)
+    requester = db.get(User, request.requester_employee_id)
+    replacement = db.get(User, request.replacement_employee_id) if request.replacement_employee_id else None
+    if not shift or not requester:
+        raise HTTPException(status_code=404, detail="Shift change request context is incomplete.")
+    return ShiftChangeRequestRead(
+        id=request.id,
+        organization_id=request.organization_id,
+        shift_id=request.shift_id,
+        requester_employee_id=request.requester_employee_id,
+        request_type=request.request_type,
+        note=request.note,
+        status=request.status,
+        manager_response=request.manager_response,
+        replacement_employee_id=request.replacement_employee_id,
+        created_at=request.created_at,
+        reviewed_at=request.reviewed_at,
+        shift_date=shift.shift_date,
+        shift_start_at=shift.start_at,
+        shift_end_at=shift.end_at,
+        requester_name=requester.full_name,
+        replacement_employee_name=replacement.full_name if replacement else None,
+    )
 
 
 @app.get("/health")
@@ -826,6 +857,16 @@ def list_employee_time_off_requests(employee_id: int, db: Session = Depends(get_
     return list(requests)
 
 
+@app.get(f"{settings.api_prefix}/employees/{{employee_id}}/shift-change-requests", response_model=list[ShiftChangeRequestRead])
+def list_employee_shift_change_requests(employee_id: int, db: Session = Depends(get_db)):
+    requests = db.scalars(
+        select(ShiftChangeRequest)
+        .where(ShiftChangeRequest.requester_employee_id == employee_id)
+        .order_by(ShiftChangeRequest.created_at.desc())
+    ).all()
+    return [serialize_shift_change_request(request, db) for request in requests]
+
+
 @app.get(
     f"{settings.api_prefix}/employees/{{employee_id}}/availability-requests",
     response_model=list[AvailabilityRequestRead],
@@ -855,6 +896,33 @@ def create_availability_request(payload: AvailabilityRequestCreate, db: Session 
     db.commit()
     db.refresh(request)
     return request
+
+
+@app.post(f"{settings.api_prefix}/shift-change-requests", response_model=ShiftChangeRequestRead)
+def create_shift_change_request(payload: ShiftChangeRequestCreate, db: Session = Depends(get_db)):
+    employee = get_employee_or_404(payload.requester_employee_id, payload.organization_id, db)
+    shift = db.get(ScheduleShift, payload.shift_id)
+    if not shift or shift.organization_id != payload.organization_id or shift.employee_id != employee.id:
+        raise HTTPException(status_code=404, detail="Shift not found for this employee.")
+    if shift.shift_date < date.today():
+        raise HTTPException(status_code=400, detail="Only upcoming shifts can be changed.")
+    existing_pending = db.scalar(
+        select(ShiftChangeRequest).where(
+            and_(
+                ShiftChangeRequest.shift_id == payload.shift_id,
+                ShiftChangeRequest.requester_employee_id == payload.requester_employee_id,
+                ShiftChangeRequest.status == ShiftChangeStatus.PENDING,
+            )
+        )
+    )
+    if existing_pending:
+        raise HTTPException(status_code=400, detail="A pending shift change request already exists for this shift.")
+
+    request = ShiftChangeRequest(**payload.model_dump())
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+    return serialize_shift_change_request(request, db)
 
 
 @app.get(
@@ -891,6 +959,73 @@ def update_availability_request(
     db.commit()
     db.refresh(request)
     return request
+
+
+@app.get(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/shift-change-requests",
+    response_model=list[ShiftChangeRequestRead],
+)
+def list_shift_change_requests(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    requests = db.scalars(
+        select(ShiftChangeRequest)
+        .where(ShiftChangeRequest.organization_id == organization_id)
+        .order_by(ShiftChangeRequest.created_at.desc())
+    ).all()
+    return [serialize_shift_change_request(request, db) for request in requests]
+
+
+@app.put(f"{settings.api_prefix}/shift-change-requests/{{request_id}}", response_model=ShiftChangeRequestRead)
+def update_shift_change_request(
+    request_id: int,
+    payload: ShiftChangeRequestUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    request = db.get(ShiftChangeRequest, request_id)
+    if not request:
+        raise HTTPException(status_code=404, detail="Shift change request not found.")
+    validate_organization_access(request.organization_id, current_user)
+    shift = db.get(ScheduleShift, request.shift_id)
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found.")
+
+    replacement_employee = None
+    if payload.replacement_employee_id is not None:
+        replacement_employee = get_employee_or_404(payload.replacement_employee_id, request.organization_id, db)
+
+    if payload.status == ShiftChangeStatus.APPROVED:
+        if replacement_employee is None:
+            raise HTTPException(status_code=400, detail="Choose a replacement employee before approving.")
+        shift.employee_id = replacement_employee.id
+        request.replacement_employee_id = replacement_employee.id
+
+        related_pending = db.scalars(
+            select(ShiftChangeRequest).where(
+                and_(
+                    ShiftChangeRequest.shift_id == request.shift_id,
+                    ShiftChangeRequest.status == ShiftChangeStatus.PENDING,
+                    ShiftChangeRequest.id != request.id,
+                )
+            )
+        ).all()
+        for related in related_pending:
+            related.status = ShiftChangeStatus.DENIED
+            related.manager_response = "Another shift change request for this shift was already approved."
+            related.reviewed_at = datetime.utcnow()
+    elif payload.status == ShiftChangeStatus.DENIED:
+        request.replacement_employee_id = payload.replacement_employee_id
+
+    request.status = payload.status
+    request.manager_response = payload.manager_response
+    request.reviewed_at = datetime.utcnow()
+    db.commit()
+    db.refresh(request)
+    return serialize_shift_change_request(request, db)
 
 
 @app.get(
