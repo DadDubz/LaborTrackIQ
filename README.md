@@ -48,7 +48,7 @@ docs/
 ## Local Setup
 
 1. Copy `.env.example` to `.env`
-2. Set `SECRET_KEY` and `CORS_ORIGINS` for your environment, and set `ALLOW_DEMO_BOOTSTRAP=false` outside local development
+2. Set `APP_ENVIRONMENT`, `SECRET_KEY`, and `CORS_ORIGINS` for your environment, and set `ALLOW_DEMO_BOOTSTRAP=false` outside local development
 3. Add your QuickBooks OAuth credentials when you are ready to test live QuickBooks auth
 4. Install backend requirements with `.venv/bin/pip install -r backend/requirements.txt`
 5. Install frontend packages with `npm install` in `frontend/`
@@ -56,6 +56,22 @@ docs/
 7. Start the frontend with `npm run dev -- --host 127.0.0.1 --port 5173` from `frontend/`
 
 QuickBooks setup details live in `docs/quickbooks-setup.md`.
+
+## Database Migrations
+
+Alembic is configured under `backend/alembic/`.
+
+```bash
+cd backend
+../.venv/bin/alembic -c alembic.ini upgrade head
+```
+
+For existing environments that already have tables, run:
+
+```bash
+cd backend
+../.venv/bin/alembic -c alembic.ini stamp head
+```
 
 ## Smoke Tests
 
@@ -66,6 +82,11 @@ Run the backend smoke suite with:
 ```
 
 The smoke tests cover launch-critical flows like employee self-service auth, duplicate identity protection, report recipient handling, and payroll-only labor export behavior.
+
+## Health Endpoints
+
+- `GET /health`
+- `GET /health/db`
 
 ## Suggested Next Steps
 

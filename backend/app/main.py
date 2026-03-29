@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -139,6 +140,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def validate_runtime_configuration() -> None:
+    if settings.app_environment.lower() in {"production", "staging"}:
+        if settings.secret_key == "labortrackiq-dev-secret":
+            raise RuntimeError("SECRET_KEY must be changed for production or staging.")
+        if settings.allow_demo_bootstrap:
+            raise RuntimeError("ALLOW_DEMO_BOOTSTRAP must be false for production or staging.")
 
 
 def get_current_user(
@@ -618,6 +628,15 @@ def build_admin_notifications(organization_id: int, db: Session) -> list[Notific
 @app.get("/health")
 def health_check():
     return {"status": "ok", "app": settings.app_name}
+
+
+@app.get("/health/db")
+def database_health_check(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+    except SQLAlchemyError as exc:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {exc.__class__.__name__}") from exc
+    return {"status": "ok", "database": "connected"}
 
 
 @app.post(f"{settings.api_prefix}/organizations", response_model=dict)

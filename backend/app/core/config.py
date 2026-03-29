@@ -28,6 +28,7 @@ def _parse_csv(value: str, default: List[str]) -> List[str]:
 
 class Settings(BaseModel):
     app_name: str = os.getenv("APP_NAME", "LaborTrackIQ API")
+    app_environment: str = os.getenv("APP_ENVIRONMENT", "development")
     database_url: str = os.getenv("DATABASE_URL", f"sqlite:///{(BACKEND_DIR / 'labortrackiq.db').resolve()}")
     api_prefix: str = os.getenv("API_PREFIX", "/api")
     secret_key: str = os.getenv("SECRET_KEY", "labortrackiq-dev-secret")

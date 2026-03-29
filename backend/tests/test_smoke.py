@@ -70,6 +70,11 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         self.assertEqual(authorized.status_code, 200, authorized.text)
         self.assertEqual(authorized.json()["employee_number"], "1001")
 
+    def test_database_health_endpoint_reports_connected(self):
+        response = self.client.get("/health/db")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["database"], "connected")
+
     def test_duplicate_employee_identity_is_rejected(self):
         headers = self.admin_headers()
 
@@ -199,8 +204,8 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             f"/api/integrations/{integration_id}/export-labor",
             headers=headers,
             json={
-                "start_date": date.today().isoformat(),
-                "end_date": date.today().isoformat(),
+                "start_date": (date.today() - timedelta(days=1)).isoformat(),
+                "end_date": (date.today() + timedelta(days=1)).isoformat(),
             },
         )
         self.assertEqual(export.status_code, 200, export.text)
