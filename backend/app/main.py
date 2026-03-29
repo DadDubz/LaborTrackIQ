@@ -639,6 +639,29 @@ def database_health_check(db: Session = Depends(get_db)):
     return {"status": "ok", "database": "connected"}
 
 
+@app.get("/health/ready")
+def readiness_check(db: Session = Depends(get_db)):
+    issues: list[str] = []
+
+    try:
+        db.execute(text("SELECT 1"))
+    except SQLAlchemyError:
+        issues.append("database_unavailable")
+
+    if settings.app_environment.lower() in {"production", "staging"}:
+        if settings.secret_key == "labortrackiq-dev-secret":
+            issues.append("default_secret_key")
+        if settings.allow_demo_bootstrap:
+            issues.append("demo_bootstrap_enabled")
+        if settings.database_url.startswith("sqlite"):
+            issues.append("sqlite_in_production")
+
+    if issues:
+        raise HTTPException(status_code=503, detail={"status": "not_ready", "issues": issues})
+
+    return {"status": "ready", "issues": []}
+
+
 @app.post(f"{settings.api_prefix}/organizations", response_model=dict)
 def create_organization(payload: OrganizationCreate, db: Session = Depends(get_db)):
     organization = Organization(name=payload.name, timezone=payload.timezone)

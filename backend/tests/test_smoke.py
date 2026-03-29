@@ -75,6 +75,11 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["database"], "connected")
 
+    def test_readiness_endpoint_reports_ready_in_local_mode(self):
+        response = self.client.get("/health/ready")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["status"], "ready")
+
     def test_duplicate_employee_identity_is_rejected(self):
         headers = self.admin_headers()
 

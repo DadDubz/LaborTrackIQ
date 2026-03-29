@@ -102,6 +102,7 @@ The smoke tests cover launch-critical flows like employee self-service auth, dup
 
 - `GET /health`
 - `GET /health/db`
+- `GET /health/ready`
 
 ## Docker Compose
 

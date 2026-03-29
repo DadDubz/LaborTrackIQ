@@ -36,6 +36,7 @@ PYTHONPATH=backend ../.venv/bin/python backend/scripts/preflight.py --strict
 
 - App health: `GET /health`
 - DB health: `GET /health/db`
+- Readiness: `GET /health/ready`
 
 Both must return `200` before routing traffic.
 
