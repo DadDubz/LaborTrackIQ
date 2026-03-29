@@ -24,14 +24,22 @@ cd backend
 alembic -c alembic.ini stamp head
 ```
 
-## 3. Health checks
+## 3. Preflight validation
+
+Run preflight checks before applying traffic:
+
+```bash
+PYTHONPATH=backend ../.venv/bin/python backend/scripts/preflight.py --strict
+```
+
+## 4. Health checks
 
 - App health: `GET /health`
 - DB health: `GET /health/db`
 
 Both must return `200` before routing traffic.
 
-## 4. Containerized local/prod-like boot
+## 5. Containerized local/prod-like boot
 
 From repo root:
 
@@ -41,7 +49,7 @@ docker compose up --build
 
 Backend will be available at `http://127.0.0.1:8000`.
 
-## 5. Post-deploy checks
+## 6. Post-deploy checks
 
 - Admin login works
 - Employee clock in/out works

@@ -74,6 +74,20 @@ cd backend
 ../.venv/bin/alembic -c alembic.ini stamp head
 ```
 
+## Preflight Checks
+
+Run deployment preflight checks with:
+
+```bash
+make preflight
+```
+
+For stricter validation (including rejecting development defaults in any environment):
+
+```bash
+make preflight-strict
+```
+
 ## Smoke Tests
 
 Run the backend smoke suite with:
