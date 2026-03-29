@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: labortrackiq
+      POSTGRES_USER: labortrackiq
+      POSTGRES_PASSWORD: labortrackiq
+    ports:
+      - "5432:5432"
+    volumes:
+      - labortrackiq_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U labortrackiq -d labortrackiq"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      APP_ENVIRONMENT: development
+      API_PREFIX: /api
+      DATABASE_URL: postgresql+psycopg://labortrackiq:labortrackiq@postgres:5432/labortrackiq
+      SECRET_KEY: change-me-for-production
+      ALLOW_DEMO_BOOTSTRAP: "true"
+      CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/db').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  labortrackiq_postgres_data:

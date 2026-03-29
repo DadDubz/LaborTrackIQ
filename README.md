@@ -56,6 +56,7 @@ docs/
 7. Start the frontend with `npm run dev -- --host 127.0.0.1 --port 5173` from `frontend/`
 
 QuickBooks setup details live in `docs/quickbooks-setup.md`.
+Deployment guidance lives in `docs/deployment-runbook.md`.
 
 ## Database Migrations
 
@@ -87,6 +88,14 @@ The smoke tests cover launch-critical flows like employee self-service auth, dup
 
 - `GET /health`
 - `GET /health/db`
+
+## Docker Compose
+
+You can run backend + PostgreSQL with:
+
+```bash
+docker compose up --build
+```
 
 ## Suggested Next Steps
 
