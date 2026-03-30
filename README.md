@@ -88,6 +88,12 @@ For stricter validation (including rejecting development defaults in any environ
 make preflight-strict
 ```
 
+Run the full release gate:
+
+```bash
+make release-gate
+```
+
 ## Smoke Tests
 
 Run the backend smoke suite with:

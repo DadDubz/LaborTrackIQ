@@ -2,6 +2,7 @@
 
 ## 1. Environment baseline
 
+- Start from `ops/env/backend.production.env.example`
 - Set `APP_ENVIRONMENT=production`
 - Set a strong `SECRET_KEY`
 - Set `ALLOW_DEMO_BOOTSTRAP=false`
@@ -30,6 +31,12 @@ Run preflight checks before applying traffic:
 
 ```bash
 PYTHONPATH=backend ../.venv/bin/python backend/scripts/preflight.py --strict
+```
+
+Or run the full release gate from repo root:
+
+```bash
+make release-gate
 ```
 
 ## 4. Health checks

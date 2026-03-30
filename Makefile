@@ -1,7 +1,7 @@
 PYTHON ?= .venv/bin/python
 PIP ?= .venv/bin/pip
 
-.PHONY: backend-install frontend-install backend-test frontend-build preflight preflight-strict migrate upgrade-dev
+.PHONY: backend-install frontend-install backend-test frontend-build preflight preflight-strict migrate upgrade-dev release-gate
 
 backend-install:
 	$(PIP) install -r backend/requirements.txt
@@ -28,3 +28,8 @@ upgrade-dev:
 	$(MAKE) backend-test
 	$(MAKE) frontend-build
 	$(MAKE) preflight
+
+release-gate:
+	$(MAKE) backend-test
+	$(MAKE) frontend-build
+	$(MAKE) preflight-strict

@@ -80,6 +80,29 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["status"], "ready")
 
+    def test_readiness_endpoint_reports_not_ready_for_bad_production_config(self):
+        original_environment = settings.app_environment
+        original_secret = settings.secret_key
+        original_bootstrap = settings.allow_demo_bootstrap
+        original_database_url = settings.database_url
+        try:
+            settings.app_environment = "production"
+            settings.secret_key = "labortrackiq-dev-secret"
+            settings.allow_demo_bootstrap = True
+            settings.database_url = "sqlite:///tmp/test.db"
+
+            response = self.client.get("/health/ready")
+            self.assertEqual(response.status_code, 503, response.text)
+            issues = response.json()["detail"]["issues"]
+            self.assertIn("default_secret_key", issues)
+            self.assertIn("demo_bootstrap_enabled", issues)
+            self.assertIn("sqlite_in_production", issues)
+        finally:
+            settings.app_environment = original_environment
+            settings.secret_key = original_secret
+            settings.allow_demo_bootstrap = original_bootstrap
+            settings.database_url = original_database_url
+
     def test_duplicate_employee_identity_is_rejected(self):
         headers = self.admin_headers()
 
