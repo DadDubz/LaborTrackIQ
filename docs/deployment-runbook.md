@@ -25,6 +25,20 @@ cd backend
 alembic -c alembic.ini stamp head
 ```
 
+Rollback one revision if needed:
+
+```bash
+cd backend
+alembic -c alembic.ini downgrade -1
+```
+
+Rollback to base (disaster recovery only):
+
+```bash
+cd backend
+alembic -c alembic.ini downgrade base
+```
+
 ## 3. Preflight validation
 
 Run preflight checks before applying traffic:
@@ -37,6 +51,12 @@ Or run the full release gate from repo root:
 
 ```bash
 make release-gate
+```
+
+For local/dev pipelines, use:
+
+```bash
+make release-gate-dev
 ```
 
 ## 4. Health checks

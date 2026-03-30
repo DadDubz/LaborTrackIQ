@@ -74,6 +74,18 @@ cd backend
 ../.venv/bin/alembic -c alembic.ini stamp head
 ```
 
+Rollback one migration:
+
+```bash
+make migrate-down-one
+```
+
+Rollback to base:
+
+```bash
+make migrate-down-base
+```
+
 ## Preflight Checks
 
 Run deployment preflight checks with:
@@ -92,6 +104,12 @@ Run the full release gate:
 
 ```bash
 make release-gate
+```
+
+For local/dev-safe release checks:
+
+```bash
+make release-gate-dev
 ```
 
 ## Smoke Tests
