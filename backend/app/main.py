@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import math
 import threading
 import time
 from datetime import date, datetime
@@ -2185,6 +2186,7 @@ def get_quickbooks_authorize_url(
     integration.settings = {
         **(integration.settings or {}),
         "oauth_state": state,
+        "oauth_state_issued_at": datetime.utcnow().isoformat(),
         "oauth_redirect_uri": settings.quickbooks_redirect_uri,
     }
     db.commit()
@@ -2231,6 +2233,29 @@ def quickbooks_callback(
     )
     if not integration:
         raise HTTPException(status_code=400, detail="QuickBooks OAuth state is invalid or expired.")
+    state_issued_at = (integration.settings or {}).get("oauth_state_issued_at")
+    if not state_issued_at:
+        raise HTTPException(status_code=400, detail="QuickBooks OAuth state is invalid or expired.")
+    try:
+        issued_at = datetime.fromisoformat(str(state_issued_at))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="QuickBooks OAuth state is invalid or expired.") from exc
+    if issued_at.tzinfo is not None:
+        issued_at = issued_at.replace(tzinfo=None)
+    age_seconds = (datetime.utcnow() - issued_at).total_seconds()
+    if age_seconds < 0:
+        age_seconds = 0
+    if age_seconds > settings.quickbooks_oauth_state_ttl_seconds:
+        integration.status = IntegrationStatus.ERROR
+        integration.settings = {
+            **(integration.settings or {}),
+            "oauth_state": None,
+            "oauth_state_issued_at": None,
+            "last_error_detail": "QuickBooks OAuth state expired before callback completion.",
+            "oauth_state_age_seconds": math.floor(age_seconds),
+        }
+        db.commit()
+        raise HTTPException(status_code=400, detail="QuickBooks OAuth state is invalid or expired.")
 
     try:
         tokens = exchange_code_for_tokens(code)
@@ -2249,6 +2274,7 @@ def quickbooks_callback(
             "realm_id": realmId or (integration.settings or {}).get("realm_id"),
             "company_name": (integration.settings or {}).get("company_name", "QuickBooks Company"),
             "oauth_state": None,
+            "oauth_state_issued_at": None,
             "oauth_redirect_uri": settings.quickbooks_redirect_uri,
             "last_export_status": (integration.settings or {}).get("last_export_status", "ready"),
             "last_error_detail": None,
@@ -2265,6 +2291,7 @@ def quickbooks_callback(
             **(integration.settings or {}),
             "last_error_detail": str(exc.detail),
             "oauth_state": None,
+            "oauth_state_issued_at": None,
         }
         db.commit()
         raise

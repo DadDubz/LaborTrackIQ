@@ -690,7 +690,10 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             )
             self.assertIsNotNone(org_one_integration)
             org_one_integration.status = IntegrationStatus.PENDING
-            org_one_integration.settings = {"oauth_state": "state-org-one"}
+            org_one_integration.settings = {
+                "oauth_state": "state-org-one",
+                "oauth_state_issued_at": datetime.utcnow().isoformat(),
+            }
             org_one_integration.credentials_ref = None
             db.add(org_one_integration)
 
@@ -710,7 +713,11 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
                 organization_id=org_two.id,
                 provider=IntegrationProvider.QUICKBOOKS,
                 status=IntegrationStatus.PENDING,
-                settings={"oauth_state": "state-org-two", "company_name": "Org Two Co"},
+                settings={
+                    "oauth_state": "state-org-two",
+                    "oauth_state_issued_at": datetime.utcnow().isoformat(),
+                    "company_name": "Org Two Co",
+                },
             )
             db.add(org_two_integration)
             db.commit()
@@ -740,6 +747,36 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             org_two_refreshed = db.get(IntegrationConnection, org_two_integration_id)
             self.assertEqual(org_one_refreshed.status, IntegrationStatus.PENDING)
             self.assertEqual(org_two_refreshed.status, IntegrationStatus.CONNECTED)
+
+    def test_quickbooks_callback_rejects_expired_oauth_state(self):
+        with Session(engine) as db:
+            integration = db.scalar(
+                select(IntegrationConnection).where(
+                    IntegrationConnection.organization_id == 1,
+                    IntegrationConnection.provider == IntegrationProvider.QUICKBOOKS,
+                )
+            )
+            self.assertIsNotNone(integration)
+            integration.status = IntegrationStatus.PENDING
+            integration.settings = {
+                "oauth_state": "expired-state",
+                "oauth_state_issued_at": "2000-01-01T00:00:00",
+            }
+            integration.credentials_ref = None
+            db.add(integration)
+            db.commit()
+            integration_id = integration.id
+
+        callback = self.client.get(
+            "/api/integrations/quickbooks/callback",
+            params={"state": "expired-state", "code": "demo-code", "realmId": "realm-one"},
+        )
+        self.assertEqual(callback.status_code, 400, callback.text)
+
+        with Session(engine) as db:
+            refreshed = db.get(IntegrationConnection, integration_id)
+            self.assertEqual(refreshed.status, IntegrationStatus.ERROR)
+            self.assertIsNone((refreshed.settings or {}).get("oauth_state"))
 
     def test_schedule_publish_and_unpublish_controls_employee_visibility(self):
         headers = self.admin_headers()

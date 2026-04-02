@@ -40,6 +40,7 @@ class Settings(BaseModel):
     )
     quickbooks_environment: str = os.getenv("QUICKBOOKS_ENVIRONMENT", "sandbox")
     quickbooks_scopes: str = os.getenv("QUICKBOOKS_SCOPES", "com.intuit.quickbooks.accounting")
+    quickbooks_oauth_state_ttl_seconds: int = int(os.getenv("QUICKBOOKS_OAUTH_STATE_TTL_SECONDS", "900"))
     allow_demo_bootstrap: bool = _parse_bool(os.getenv("ALLOW_DEMO_BOOTSTRAP"), True)
     max_request_bytes: int = int(os.getenv("MAX_REQUEST_BYTES", "1048576"))
     auth_rate_limit: int = int(os.getenv("AUTH_RATE_LIMIT", "20"))
