@@ -368,9 +368,9 @@ function rangesOverlap(startA: string, endA: string, startB: string, endB: strin
 }
 
 export default function App() {
-  const [organizationId, setOrganizationId] = useState("1");
-  const [employeeNumber, setEmployeeNumber] = useState("1001");
-  const [pinCode, setPinCode] = useState("1234");
+  const [organizationId, setOrganizationId] = useState(DEMO_BOOTSTRAP_ENABLED ? "1" : "");
+  const [employeeNumber, setEmployeeNumber] = useState(DEMO_BOOTSTRAP_ENABLED ? "1001" : "");
+  const [pinCode, setPinCode] = useState(DEMO_BOOTSTRAP_ENABLED ? "1234" : "");
   const [activeKeypadField, setActiveKeypadField] = useState<KeypadField>("employee");
   const [employeePortal, setEmployeePortal] = useState<ClockLookupResponse | null>(null);
   const [employeeTab, setEmployeeTab] = useState<EmployeeTab>("home");
@@ -402,8 +402,8 @@ export default function App() {
     preferred_shift_notes: "",
   });
 
-  const [adminEmail, setAdminEmail] = useState("admin@demodiner.com");
-  const [adminPassword, setAdminPassword] = useState("admin1234");
+  const [adminEmail, setAdminEmail] = useState(DEMO_BOOTSTRAP_ENABLED ? "admin@demodiner.com" : "");
+  const [adminPassword, setAdminPassword] = useState(DEMO_BOOTSTRAP_ENABLED ? "admin1234" : "");
   const [adminUser, setAdminUser] = useState<User | null>(null);
   const [token, setToken] = useState("");
   const [adminError, setAdminError] = useState("");
