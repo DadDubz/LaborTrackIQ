@@ -4,7 +4,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -157,6 +157,15 @@ class ScheduleCoverageTarget(Base):
 
 class TimeEntry(Base):
     __tablename__ = "time_entries"
+    __table_args__ = (
+        Index(
+            "uq_time_entries_open_per_employee",
+            "employee_id",
+            unique=True,
+            sqlite_where=text("clock_out_at IS NULL"),
+            postgresql_where=text("clock_out_at IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)

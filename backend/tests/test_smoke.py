@@ -28,11 +28,13 @@ from app.models import (
     IntegrationProvider,
     IntegrationStatus,
     Organization,
+    TimeEntry,
     User,
     UserRole,
 )
 from app.security import create_access_token
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 
@@ -519,6 +521,32 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 404, response.text)
+
+    def test_open_time_entry_unique_per_employee(self):
+        with Session(engine) as db:
+            first = db.scalar(
+                select(EmployeeProfile).where(EmployeeProfile.employee_number == "1001")
+            )
+            self.assertIsNotNone(first)
+            employee_id = first.user_id
+            db.add_all(
+                [
+                    TimeEntry(
+                        organization_id=1,
+                        employee_id=employee_id,
+                        clock_in_at=datetime.utcnow(),
+                        clock_in_source="test-suite",
+                    ),
+                    TimeEntry(
+                        organization_id=1,
+                        employee_id=employee_id,
+                        clock_in_at=datetime.utcnow() + timedelta(minutes=1),
+                        clock_in_source="test-suite",
+                    ),
+                ]
+            )
+            with self.assertRaises(IntegrityError):
+                db.commit()
 
     def test_report_recipient_duplicate_and_restore_flow(self):
         headers = self.admin_headers()

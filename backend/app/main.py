@@ -1901,6 +1901,7 @@ def clock_in_out(payload: ClockAction, request: Request, db: Session = Depends(g
     )
 
     status = "clocked_in"
+    created_new_entry = False
     if active_entry:
         active_entry.clock_out_at = datetime.utcnow()
         active_entry.clock_out_source = payload.source
@@ -1914,8 +1915,22 @@ def clock_in_out(payload: ClockAction, request: Request, db: Session = Depends(g
             clock_in_source=payload.source,
         )
         db.add(entry)
+        created_new_entry = True
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        if not created_new_entry:
+            raise
+        entry = db.scalar(
+            select(TimeEntry)
+            .where(and_(TimeEntry.employee_id == employee.id, TimeEntry.clock_out_at.is_(None)))
+            .order_by(TimeEntry.clock_in_at.desc())
+        )
+        if not entry:
+            raise
+        status = "clocked_in"
     db.refresh(entry)
 
     shifts, notes = load_employee_clock_context(employee.id, payload.organization_id, db)
