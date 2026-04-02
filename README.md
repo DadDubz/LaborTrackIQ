@@ -36,6 +36,8 @@ The first release is designed to support a single business location or a small g
 - `report_subscriptions`: who receives reports
 - `integration_connections`: QuickBooks and other accounting apps
 
+Employee PINs are stored as hashed values (`pin_hash`) with legacy plaintext records automatically upgraded on successful login.
+
 ## Local Structure
 
 ```text

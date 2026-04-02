@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 from datetime import date, datetime
 from typing import Optional
 
@@ -120,6 +121,8 @@ def ensure_schedule_shift_publish_columns() -> None:
             connection.execute(text("ALTER TABLE employee_profiles ADD COLUMN preferred_weekly_hours INTEGER"))
         if profile_columns and "preferred_shift_notes" not in profile_columns:
             connection.execute(text("ALTER TABLE employee_profiles ADD COLUMN preferred_shift_notes TEXT"))
+        if profile_columns and "pin_hash" not in profile_columns:
+            connection.execute(text("ALTER TABLE employee_profiles ADD COLUMN pin_hash VARCHAR(255)"))
         availability_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(employee_availability_requests)"))}
         if availability_columns and "start_date" not in availability_columns:
             connection.execute(text("ALTER TABLE employee_availability_requests ADD COLUMN start_date DATE"))
@@ -176,9 +179,32 @@ def validate_organization_access(organization_id: int, current_user: User) -> No
         raise HTTPException(status_code=403, detail="Cross-organization access is not allowed.")
 
 
+def _set_employee_pin(profile: EmployeeProfile, raw_pin: str) -> None:
+    normalized_pin = raw_pin.strip()
+    profile.pin_hash = hash_password(normalized_pin)
+    # Keep legacy pin_code column non-sensitive for compatibility.
+    profile.pin_code = ""
+
+
+def _verify_employee_pin(profile: EmployeeProfile, provided_pin: str, db: Session) -> bool:
+    normalized_pin = provided_pin.strip()
+    if profile.pin_hash:
+        return verify_password(normalized_pin, profile.pin_hash)
+
+    # Legacy fallback for existing plaintext records; upgrade on successful match.
+    if profile.pin_code and hmac.compare_digest(profile.pin_code, normalized_pin):
+        _set_employee_pin(profile, normalized_pin)
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+        return True
+    return False
+
+
 def find_employee_by_clock_credentials(
     organization_id: int, employee_number: str, pin_code: str, db: Session
 ) -> User:
+    normalized_employee_number = employee_number.strip()
     profile = db.scalar(
         select(EmployeeProfile)
         .join(User)
@@ -186,12 +212,11 @@ def find_employee_by_clock_credentials(
             and_(
                 User.organization_id == organization_id,
                 User.is_active.is_(True),
-                EmployeeProfile.employee_number == employee_number,
-                EmployeeProfile.pin_code == pin_code,
+                EmployeeProfile.employee_number == normalized_employee_number,
             )
         )
     )
-    if not profile:
+    if not profile or not _verify_employee_pin(profile, pin_code, db):
         raise HTTPException(status_code=404, detail="Employee credentials not found.")
 
     employee = db.get(User, profile.user_id)
@@ -395,11 +420,12 @@ def get_authenticated_employee_for_self_service(
 ) -> User:
     if not employee_number or not pin_code:
         raise HTTPException(status_code=401, detail="Employee credentials are required.")
+    normalized_employee_number = employee_number.strip()
     employee = db.get(User, employee_id)
     if not employee or employee.role != UserRole.EMPLOYEE or not employee.is_active:
         raise HTTPException(status_code=404, detail="Employee not found.")
     profile = get_employee_profile_or_404(employee.id, db)
-    if profile.employee_number != employee_number or profile.pin_code != pin_code:
+    if profile.employee_number != normalized_employee_number or not _verify_employee_pin(profile, pin_code, db):
         raise HTTPException(status_code=403, detail="Employee credentials do not match.")
     return employee
 
@@ -733,13 +759,15 @@ def create_user(
         if not payload.pin_code:
             raise HTTPException(status_code=400, detail="Employees require employee_number and pin_code.")
         normalized_employee_number = ensure_unique_employee_number(payload.organization_id, payload.employee_number, db)
+        profile = EmployeeProfile(
+            user_id=user.id,
+            employee_number=normalized_employee_number,
+            pin_code="",
+            job_title=payload.job_title.strip() if payload.job_title else None,
+        )
+        _set_employee_pin(profile, payload.pin_code)
         db.add(
-            EmployeeProfile(
-                user_id=user.id,
-                employee_number=normalized_employee_number,
-                pin_code=payload.pin_code.strip(),
-                job_title=payload.job_title.strip() if payload.job_title else None,
-            )
+            profile
         )
 
     db.commit()
@@ -778,7 +806,7 @@ def update_user(
         if not payload.pin_code:
             raise HTTPException(status_code=400, detail="Employees require employee_number and pin_code.")
         profile.employee_number = ensure_unique_employee_number(user.organization_id, payload.employee_number, db, exclude_user_id=user.id)
-        profile.pin_code = payload.pin_code.strip()
+        _set_employee_pin(profile, payload.pin_code)
         profile.job_title = payload.job_title.strip() if payload.job_title else None
 
     db.commit()
@@ -2335,7 +2363,7 @@ def bootstrap_demo(db: Session = Depends(get_db)):
             profile = db.scalar(select(EmployeeProfile).where(EmployeeProfile.user_id == demo_employee.id))
             if profile:
                 profile.employee_number = "1001"
-                profile.pin_code = "1234"
+                _set_employee_pin(profile, "1234")
         existing_shifts = db.scalars(select(ScheduleShift).where(ScheduleShift.organization_id == existing_org.id)).all()
         for shift in existing_shifts:
             shift.is_published = True
@@ -2378,14 +2406,14 @@ def bootstrap_demo(db: Session = Depends(get_db)):
     db.add_all([admin, manager, employee])
     db.flush()
 
-    db.add(
-        EmployeeProfile(
-            user_id=employee.id,
-            employee_number="1001",
-            pin_code="1234",
-            job_title="Front Counter",
-        )
+    demo_profile = EmployeeProfile(
+        user_id=employee.id,
+        employee_number="1001",
+        pin_code="",
+        job_title="Front Counter",
     )
+    _set_employee_pin(demo_profile, "1234")
+    db.add(demo_profile)
     db.add_all(
         [
             ScheduleShift(

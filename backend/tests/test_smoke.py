@@ -21,6 +21,9 @@ from fastapi.testclient import TestClient
 from app.core.config import settings
 from app.db.session import Base, engine
 from app.main import app, ensure_schedule_shift_publish_columns
+from app.models import EmployeeProfile
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 
 class LaborTrackIQSmokeTests(unittest.TestCase):
@@ -133,6 +136,13 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             },
         )
         self.assertEqual(duplicate_email.status_code, 400, duplicate_email.text)
+
+    def test_employee_pin_is_not_stored_plaintext(self):
+        with Session(engine) as db:
+            profile = db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_number == "1001"))
+            self.assertIsNotNone(profile)
+            self.assertTrue(bool(profile.pin_hash))
+            self.assertNotEqual(profile.pin_code, "1234")
 
     def test_report_recipient_duplicate_and_restore_flow(self):
         headers = self.admin_headers()
