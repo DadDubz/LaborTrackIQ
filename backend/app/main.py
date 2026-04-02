@@ -1266,28 +1266,44 @@ def acknowledge_schedule(
     employee = get_authenticated_employee_for_self_service(payload.employee_id, x_employee_number, x_employee_pin, db)
     if employee.organization_id != payload.organization_id:
         raise HTTPException(status_code=403, detail="Cross-organization access is not allowed.")
-    acknowledgment = db.scalar(
-        select(ScheduleAcknowledgment).where(
-            and_(
-                ScheduleAcknowledgment.organization_id == payload.organization_id,
-                ScheduleAcknowledgment.employee_id == employee.id,
-                ScheduleAcknowledgment.week_start == payload.week_start,
+
+    def find_acknowledgment() -> Optional[ScheduleAcknowledgment]:
+        return db.scalar(
+            select(ScheduleAcknowledgment).where(
+                and_(
+                    ScheduleAcknowledgment.organization_id == payload.organization_id,
+                    ScheduleAcknowledgment.employee_id == employee.id,
+                    ScheduleAcknowledgment.week_start == payload.week_start,
+                )
             )
         )
-    )
+
+    acknowledgment = find_acknowledgment()
     if acknowledgment:
         acknowledgment.acknowledged_at = datetime.utcnow()
-    else:
-        acknowledgment = ScheduleAcknowledgment(
-            organization_id=payload.organization_id,
-            employee_id=employee.id,
-            week_start=payload.week_start,
-        )
-        db.add(acknowledgment)
+        db.commit()
+        db.refresh(acknowledgment)
+        return acknowledgment
 
-    db.commit()
-    db.refresh(acknowledgment)
-    return acknowledgment
+    acknowledgment = ScheduleAcknowledgment(
+        organization_id=payload.organization_id,
+        employee_id=employee.id,
+        week_start=payload.week_start,
+    )
+    db.add(acknowledgment)
+    try:
+        db.commit()
+        db.refresh(acknowledgment)
+        return acknowledgment
+    except IntegrityError:
+        db.rollback()
+        existing = find_acknowledgment()
+        if not existing:
+            raise
+        existing.acknowledged_at = datetime.utcnow()
+        db.commit()
+        db.refresh(existing)
+        return existing
 
 
 @app.get(

@@ -291,6 +291,9 @@ class SchedulePublicationEvent(Base):
 
 class ScheduleAcknowledgment(Base):
     __tablename__ = "schedule_acknowledgments"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "employee_id", "week_start", name="uq_schedule_ack_org_employee_week"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)

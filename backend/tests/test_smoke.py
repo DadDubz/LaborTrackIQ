@@ -567,6 +567,26 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         xero_integrations = [item for item in integrations.json() if item["provider"] == "xero"]
         self.assertEqual(len(xero_integrations), 1)
 
+    def test_schedule_acknowledgment_is_idempotent_per_week(self):
+        week_start = self.get_week_start(date.today()).isoformat()
+        payload = {
+            "organization_id": 1,
+            "employee_id": 3,
+            "week_start": week_start,
+        }
+        first = self.client.post("/api/schedule/acknowledgments", headers=self.employee_headers(), json=payload)
+        self.assertEqual(first.status_code, 200, first.text)
+        first_id = first.json()["id"]
+
+        second = self.client.post("/api/schedule/acknowledgments", headers=self.employee_headers(), json=payload)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual(second.json()["id"], first_id)
+
+        acknowledgments = self.client.get("/api/employees/3/schedule/acknowledgments", headers=self.employee_headers())
+        self.assertEqual(acknowledgments.status_code, 200, acknowledgments.text)
+        matching = [item for item in acknowledgments.json() if item["week_start"] == week_start]
+        self.assertEqual(len(matching), 1)
+
     def test_quickbooks_export_includes_only_approved_closed_entries(self):
         headers = self.admin_headers()
 

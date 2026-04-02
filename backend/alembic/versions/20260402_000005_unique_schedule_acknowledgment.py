@@ -1,0 +1,74 @@
+"""Enforce unique schedule acknowledgment per org employee and week
+
+Revision ID: 20260402_000005
+Revises: 20260402_000004
+Create Date: 2026-04-02
+"""
+
+from __future__ import annotations
+
+import sqlalchemy as sa
+from alembic import op
+
+
+revision = "20260402_000005"
+down_revision = "20260402_000004"
+branch_labels = None
+depends_on = None
+
+
+def _table_exists(inspector: sa.Inspector, table_name: str) -> bool:
+    return table_name in inspector.get_table_names()
+
+
+def _unique_constraint_exists(inspector: sa.Inspector, table_name: str, constraint_name: str) -> bool:
+    constraints = inspector.get_unique_constraints(table_name)
+    return any(constraint.get("name") == constraint_name for constraint in constraints)
+
+
+def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    table_name = "schedule_acknowledgments"
+    constraint_name = "uq_schedule_ack_org_employee_week"
+
+    if not _table_exists(inspector, table_name):
+        return
+
+    rows = bind.execute(
+        sa.text(
+            "SELECT id, organization_id, employee_id, week_start "
+            "FROM schedule_acknowledgments "
+            "ORDER BY organization_id, employee_id, week_start, acknowledged_at DESC, id DESC"
+        )
+    ).all()
+    seen_keys: set[tuple[int, int, str]] = set()
+    duplicate_ids: list[int] = []
+    for row in rows:
+        key = (int(row.organization_id), int(row.employee_id), str(row.week_start))
+        if key in seen_keys:
+            duplicate_ids.append(int(row.id))
+            continue
+        seen_keys.add(key)
+
+    if duplicate_ids:
+        ack_table = sa.table("schedule_acknowledgments", sa.column("id", sa.Integer()))
+        bind.execute(sa.delete(ack_table).where(ack_table.c.id.in_(duplicate_ids)))
+
+    inspector = sa.inspect(bind)
+    if not _unique_constraint_exists(inspector, table_name, constraint_name):
+        with op.batch_alter_table(table_name) as batch_op:
+            batch_op.create_unique_constraint(constraint_name, ["organization_id", "employee_id", "week_start"])
+
+
+def downgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    table_name = "schedule_acknowledgments"
+    constraint_name = "uq_schedule_ack_org_employee_week"
+
+    if not _table_exists(inspector, table_name):
+        return
+    if _unique_constraint_exists(inspector, table_name, constraint_name):
+        with op.batch_alter_table(table_name) as batch_op:
+            batch_op.drop_constraint(constraint_name, type_="unique")
