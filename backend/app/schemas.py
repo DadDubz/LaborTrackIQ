@@ -31,8 +31,8 @@ class UserCreate(BaseModel):
     email: Optional[EmailStr] = None
     role: UserRole
     password: Optional[str] = None
-    employee_number: Optional[str] = None
-    pin_code: Optional[str] = None
+    employee_number: Optional[str] = Field(default=None, min_length=1, max_length=32, pattern=r"^[A-Za-z0-9-]+$")
+    pin_code: Optional[str] = Field(default=None, min_length=4, max_length=12, pattern=r"^\d{4,12}$")
     job_title: Optional[str] = None
 
 
@@ -53,8 +53,8 @@ class UserUpdate(BaseModel):
     full_name: str
     email: Optional[EmailStr] = None
     password: Optional[str] = None
-    employee_number: Optional[str] = None
-    pin_code: Optional[str] = None
+    employee_number: Optional[str] = Field(default=None, min_length=1, max_length=32, pattern=r"^[A-Za-z0-9-]+$")
+    pin_code: Optional[str] = Field(default=None, min_length=4, max_length=12, pattern=r"^\d{4,12}$")
     job_title: Optional[str] = None
     is_active: bool = True
 
@@ -284,9 +284,9 @@ class NoteUpdate(BaseModel):
 
 class ClockAction(BaseModel):
     organization_id: int
-    employee_number: str
-    pin_code: str
-    source: str = "tablet"
+    employee_number: str = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9-]+$")
+    pin_code: str = Field(min_length=4, max_length=12, pattern=r"^\d{4,12}$")
+    source: str = Field(default="tablet", min_length=1, max_length=64)
 
 
 class TimeEntryRead(BaseModel):

@@ -213,6 +213,34 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         )
         self.assertEqual(duplicate_email.status_code, 400, duplicate_email.text)
 
+    def test_employee_identifier_validation_rejects_invalid_formats(self):
+        headers = self.admin_headers()
+        invalid_employee_number = self.client.post(
+            "/api/users",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "full_name": "Invalid Employee Number",
+                "email": "invalid.employee.number@demodiner.com",
+                "role": "employee",
+                "employee_number": "1001!",
+                "pin_code": "1234",
+                "job_title": "Cashier",
+            },
+        )
+        self.assertEqual(invalid_employee_number.status_code, 422, invalid_employee_number.text)
+
+        invalid_pin = self.client.post(
+            "/api/clock/lookup",
+            json={
+                "organization_id": 1,
+                "employee_number": "1001",
+                "pin_code": "12ab",
+                "source": "test-suite",
+            },
+        )
+        self.assertEqual(invalid_pin.status_code, 422, invalid_pin.text)
+
     def test_admin_audit_events_capture_user_creation(self):
         headers = self.admin_headers()
         created = self.client.post(
