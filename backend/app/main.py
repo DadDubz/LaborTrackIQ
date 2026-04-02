@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import hmac
+import threading
+import time
 from datetime import date, datetime
+from collections import deque
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -165,6 +168,40 @@ async def enforce_request_size_limit(request: Request, call_next):
         except ValueError:
             return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header."})
     return await call_next(request)
+
+
+_RATE_LIMIT_LOCK = threading.Lock()
+_RATE_LIMIT_EVENTS: dict[str, deque[float]] = {}
+
+
+def reset_rate_limit_state() -> None:
+    with _RATE_LIMIT_LOCK:
+        _RATE_LIMIT_EVENTS.clear()
+
+
+def _request_client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _enforce_rate_limit(scope: str, key: str, limit: int, window_seconds: int) -> None:
+    if limit <= 0 or window_seconds <= 0:
+        return
+    now = time.time()
+    bucket_key = f"{scope}:{key}"
+    cutoff = now - window_seconds
+
+    with _RATE_LIMIT_LOCK:
+        events = _RATE_LIMIT_EVENTS.setdefault(bucket_key, deque())
+        while events and events[0] <= cutoff:
+            events.popleft()
+        if len(events) >= limit:
+            raise HTTPException(status_code=429, detail="Too many requests. Please wait and try again.")
+        events.append(now)
 
 
 def get_current_user(
@@ -725,7 +762,13 @@ def create_organization(payload: OrganizationCreate, db: Session = Depends(get_d
 
 
 @app.post(f"{settings.api_prefix}/auth/login", response_model=LoginResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    _enforce_rate_limit(
+        scope="auth_login",
+        key=_request_client_ip(request),
+        limit=settings.auth_rate_limit,
+        window_seconds=settings.auth_rate_window_seconds,
+    )
     user = db.scalar(
         select(User).where(
             and_(
@@ -1685,7 +1728,13 @@ def delete_note(
 
 
 @app.post(f"{settings.api_prefix}/clock/lookup", response_model=ClockLookupResponse)
-def lookup_clock_context(payload: ClockAction, db: Session = Depends(get_db)):
+def lookup_clock_context(payload: ClockAction, request: Request, db: Session = Depends(get_db)):
+    _enforce_rate_limit(
+        scope="clock_lookup",
+        key=f"{_request_client_ip(request)}:{payload.employee_number.strip()}",
+        limit=settings.clock_rate_limit,
+        window_seconds=settings.clock_rate_window_seconds,
+    )
     employee = find_employee_by_clock_credentials(payload.organization_id, payload.employee_number, payload.pin_code, db)
     shifts, notes = load_employee_clock_context(employee.id, payload.organization_id, db)
     return ClockLookupResponse(
@@ -1697,7 +1746,13 @@ def lookup_clock_context(payload: ClockAction, db: Session = Depends(get_db)):
 
 
 @app.post(f"{settings.api_prefix}/clock/in-out", response_model=ClockResponse)
-def clock_in_out(payload: ClockAction, db: Session = Depends(get_db)):
+def clock_in_out(payload: ClockAction, request: Request, db: Session = Depends(get_db)):
+    _enforce_rate_limit(
+        scope="clock_in_out",
+        key=f"{_request_client_ip(request)}:{payload.employee_number.strip()}",
+        limit=settings.clock_rate_limit,
+        window_seconds=settings.clock_rate_window_seconds,
+    )
     employee = find_employee_by_clock_credentials(payload.organization_id, payload.employee_number, payload.pin_code, db)
     active_entry = db.scalar(
         select(TimeEntry)

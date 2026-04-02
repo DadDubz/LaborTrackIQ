@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import settings
 from app.db.session import Base, engine
-from app.main import app, ensure_schedule_shift_publish_columns
+from app.main import app, ensure_schedule_shift_publish_columns, reset_rate_limit_state
 from app.models import EmployeeProfile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -37,6 +37,7 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         _TEMP_DIR.cleanup()
 
     def setUp(self):
+        reset_rate_limit_state()
         Base.metadata.drop_all(bind=engine)
         Base.metadata.create_all(bind=engine)
         ensure_schedule_shift_publish_columns()
@@ -122,6 +123,64 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 413, response.text)
+
+    def test_login_rate_limit_returns_429_when_exceeded(self):
+        original_limit = settings.auth_rate_limit
+        original_window = settings.auth_rate_window_seconds
+        try:
+            settings.auth_rate_limit = 2
+            settings.auth_rate_window_seconds = 60
+            reset_rate_limit_state()
+
+            for _ in range(2):
+                response = self.client.post(
+                    "/api/auth/login",
+                    json={
+                        "organization_id": 1,
+                        "email": "admin@demodiner.com",
+                        "password": "wrong-password",
+                    },
+                )
+                self.assertEqual(response.status_code, 401, response.text)
+
+            blocked = self.client.post(
+                "/api/auth/login",
+                json={
+                    "organization_id": 1,
+                    "email": "admin@demodiner.com",
+                    "password": "wrong-password",
+                },
+            )
+            self.assertEqual(blocked.status_code, 429, blocked.text)
+        finally:
+            settings.auth_rate_limit = original_limit
+            settings.auth_rate_window_seconds = original_window
+            reset_rate_limit_state()
+
+    def test_clock_lookup_rate_limit_returns_429_when_exceeded(self):
+        original_limit = settings.clock_rate_limit
+        original_window = settings.clock_rate_window_seconds
+        try:
+            settings.clock_rate_limit = 2
+            settings.clock_rate_window_seconds = 60
+            reset_rate_limit_state()
+
+            payload = {
+                "organization_id": 1,
+                "employee_number": "1001",
+                "pin_code": "1234",
+                "source": "test-suite",
+            }
+            for _ in range(2):
+                ok = self.client.post("/api/clock/lookup", json=payload)
+                self.assertEqual(ok.status_code, 200, ok.text)
+
+            blocked = self.client.post("/api/clock/lookup", json=payload)
+            self.assertEqual(blocked.status_code, 429, blocked.text)
+        finally:
+            settings.clock_rate_limit = original_limit
+            settings.clock_rate_window_seconds = original_window
+            reset_rate_limit_state()
 
     def test_duplicate_employee_identity_is_rejected(self):
         headers = self.admin_headers()

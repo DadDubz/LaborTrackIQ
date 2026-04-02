@@ -42,6 +42,10 @@ class Settings(BaseModel):
     quickbooks_scopes: str = os.getenv("QUICKBOOKS_SCOPES", "com.intuit.quickbooks.accounting")
     allow_demo_bootstrap: bool = _parse_bool(os.getenv("ALLOW_DEMO_BOOTSTRAP"), True)
     max_request_bytes: int = int(os.getenv("MAX_REQUEST_BYTES", "1048576"))
+    auth_rate_limit: int = int(os.getenv("AUTH_RATE_LIMIT", "20"))
+    auth_rate_window_seconds: int = int(os.getenv("AUTH_RATE_WINDOW_SECONDS", "60"))
+    clock_rate_limit: int = int(os.getenv("CLOCK_RATE_LIMIT", "60"))
+    clock_rate_window_seconds: int = int(os.getenv("CLOCK_RATE_WINDOW_SECONDS", "60"))
     cors_origins: List[str] = _parse_csv(
         os.getenv("CORS_ORIGINS"),
         ["http://127.0.0.1:5173", "http://localhost:5173"],
