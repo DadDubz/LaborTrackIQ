@@ -65,8 +65,20 @@ def decode_access_token(token: str) -> dict:
     if not hmac.compare_digest(_b64encode(expected_signature), signature):
         raise HTTPException(status_code=401, detail="Invalid token signature.")
 
-    payload = json.loads(_b64decode(body).decode("utf-8"))
-    if payload.get("exp", 0) < int(datetime.now(timezone.utc).timestamp()):
+    try:
+        payload = json.loads(_b64decode(body).decode("utf-8"))
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=401, detail="Invalid token payload.") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=401, detail="Invalid token payload.")
+
+    required_fields = {"user_id": int, "organization_id": int, "role": str, "exp": int}
+    for field_name, field_type in required_fields.items():
+        field_value = payload.get(field_name)
+        if not isinstance(field_value, field_type):
+            raise HTTPException(status_code=401, detail="Invalid token payload.")
+
+    if payload["exp"] < int(datetime.now(timezone.utc).timestamp()):
         raise HTTPException(status_code=401, detail="Token expired.")
     return payload
 

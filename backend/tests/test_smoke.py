@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.db.session import Base, engine
 from app.main import app, ensure_schedule_shift_publish_columns, reset_rate_limit_state
 from app.models import EmployeeProfile
+from app.security import create_access_token
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -127,10 +128,14 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
     def test_login_rate_limit_returns_429_when_exceeded(self):
         original_limit = settings.auth_rate_limit
         original_window = settings.auth_rate_window_seconds
+        original_account_limit = settings.auth_account_rate_limit
+        original_account_window = settings.auth_account_rate_window_seconds
         original_trust_proxy_headers = settings.trust_proxy_headers
         try:
             settings.auth_rate_limit = 2
             settings.auth_rate_window_seconds = 60
+            settings.auth_account_rate_limit = 100
+            settings.auth_account_rate_window_seconds = 60
             settings.trust_proxy_headers = False
             reset_rate_limit_state()
 
@@ -157,16 +162,22 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         finally:
             settings.auth_rate_limit = original_limit
             settings.auth_rate_window_seconds = original_window
+            settings.auth_account_rate_limit = original_account_limit
+            settings.auth_account_rate_window_seconds = original_account_window
             settings.trust_proxy_headers = original_trust_proxy_headers
             reset_rate_limit_state()
 
     def test_login_rate_limit_ignores_forwarded_for_when_proxy_headers_untrusted(self):
         original_limit = settings.auth_rate_limit
         original_window = settings.auth_rate_window_seconds
+        original_account_limit = settings.auth_account_rate_limit
+        original_account_window = settings.auth_account_rate_window_seconds
         original_trust_proxy_headers = settings.trust_proxy_headers
         try:
             settings.auth_rate_limit = 1
             settings.auth_rate_window_seconds = 60
+            settings.auth_account_rate_limit = 100
+            settings.auth_account_rate_window_seconds = 60
             settings.trust_proxy_headers = False
             reset_rate_limit_state()
 
@@ -194,16 +205,22 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         finally:
             settings.auth_rate_limit = original_limit
             settings.auth_rate_window_seconds = original_window
+            settings.auth_account_rate_limit = original_account_limit
+            settings.auth_account_rate_window_seconds = original_account_window
             settings.trust_proxy_headers = original_trust_proxy_headers
             reset_rate_limit_state()
 
     def test_login_rate_limit_uses_forwarded_for_when_proxy_headers_trusted(self):
         original_limit = settings.auth_rate_limit
         original_window = settings.auth_rate_window_seconds
+        original_account_limit = settings.auth_account_rate_limit
+        original_account_window = settings.auth_account_rate_window_seconds
         original_trust_proxy_headers = settings.trust_proxy_headers
         try:
             settings.auth_rate_limit = 1
             settings.auth_rate_window_seconds = 60
+            settings.auth_account_rate_limit = 100
+            settings.auth_account_rate_window_seconds = 60
             settings.trust_proxy_headers = True
             reset_rate_limit_state()
 
@@ -231,8 +248,80 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         finally:
             settings.auth_rate_limit = original_limit
             settings.auth_rate_window_seconds = original_window
+            settings.auth_account_rate_limit = original_account_limit
+            settings.auth_account_rate_window_seconds = original_account_window
             settings.trust_proxy_headers = original_trust_proxy_headers
             reset_rate_limit_state()
+
+    def test_login_account_rate_limit_applies_across_sources(self):
+        original_limit = settings.auth_rate_limit
+        original_window = settings.auth_rate_window_seconds
+        original_account_limit = settings.auth_account_rate_limit
+        original_account_window = settings.auth_account_rate_window_seconds
+        original_trust_proxy_headers = settings.trust_proxy_headers
+        try:
+            settings.auth_rate_limit = 100
+            settings.auth_rate_window_seconds = 60
+            settings.auth_account_rate_limit = 2
+            settings.auth_account_rate_window_seconds = 60
+            settings.trust_proxy_headers = True
+            reset_rate_limit_state()
+
+            first = self.client.post(
+                "/api/auth/login",
+                headers={"X-Forwarded-For": "10.0.0.1"},
+                json={
+                    "organization_id": 1,
+                    "email": "admin@demodiner.com",
+                    "password": "wrong-password",
+                },
+            )
+            self.assertEqual(first.status_code, 401, first.text)
+
+            second = self.client.post(
+                "/api/auth/login",
+                headers={"X-Forwarded-For": "10.0.0.2"},
+                json={
+                    "organization_id": 1,
+                    "email": "admin@demodiner.com",
+                    "password": "wrong-password",
+                },
+            )
+            self.assertEqual(second.status_code, 401, second.text)
+
+            blocked = self.client.post(
+                "/api/auth/login",
+                headers={"X-Forwarded-For": "10.0.0.3"},
+                json={
+                    "organization_id": 1,
+                    "email": "admin@demodiner.com",
+                    "password": "wrong-password",
+                },
+            )
+            self.assertEqual(blocked.status_code, 429, blocked.text)
+        finally:
+            settings.auth_rate_limit = original_limit
+            settings.auth_rate_window_seconds = original_window
+            settings.auth_account_rate_limit = original_account_limit
+            settings.auth_account_rate_window_seconds = original_account_window
+            settings.trust_proxy_headers = original_trust_proxy_headers
+            reset_rate_limit_state()
+
+    def test_login_accepts_email_case_insensitively(self):
+        response = self.client.post(
+            "/api/auth/login",
+            json={
+                "organization_id": 1,
+                "email": "ADMIN@DEMODINER.COM",
+                "password": "admin1234",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+
+    def test_protected_endpoint_rejects_token_organization_mismatch(self):
+        mismatch_token = create_access_token(user_id=1, organization_id=9999, role="admin")
+        response = self.client.get("/api/organizations/1/users", headers={"Authorization": f"Bearer {mismatch_token}"})
+        self.assertEqual(response.status_code, 401, response.text)
 
     def test_clock_lookup_rate_limit_returns_429_when_exceeded(self):
         original_limit = settings.clock_rate_limit

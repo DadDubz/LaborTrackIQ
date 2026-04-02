@@ -219,6 +219,10 @@ def get_current_user(
     user = db.get(User, payload["user_id"])
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not available.")
+    if user.organization_id != payload["organization_id"]:
+        raise HTTPException(status_code=401, detail="Token organization mismatch.")
+    if user.role.value != payload["role"]:
+        raise HTTPException(status_code=401, detail="Token role mismatch.")
     return user
 
 
@@ -788,17 +792,26 @@ def create_organization(payload: OrganizationCreate, db: Session = Depends(get_d
 
 @app.post(f"{settings.api_prefix}/auth/login", response_model=LoginResponse)
 def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    normalized_email = normalize_email(payload.email)
+    if not normalized_email:
+        raise HTTPException(status_code=401, detail="Invalid login credentials.")
     _enforce_rate_limit(
         scope="auth_login",
         key=_request_client_ip(request),
         limit=settings.auth_rate_limit,
         window_seconds=settings.auth_rate_window_seconds,
     )
+    _enforce_rate_limit(
+        scope="auth_login_account",
+        key=f"{payload.organization_id}:{normalized_email}",
+        limit=settings.auth_account_rate_limit,
+        window_seconds=settings.auth_account_rate_window_seconds,
+    )
     user = db.scalar(
         select(User).where(
             and_(
                 User.organization_id == payload.organization_id,
-                User.email == payload.email,
+                User.email == normalized_email,
                 User.is_active.is_(True),
             )
         )

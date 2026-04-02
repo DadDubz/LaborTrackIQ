@@ -44,6 +44,8 @@ class Settings(BaseModel):
     max_request_bytes: int = int(os.getenv("MAX_REQUEST_BYTES", "1048576"))
     auth_rate_limit: int = int(os.getenv("AUTH_RATE_LIMIT", "20"))
     auth_rate_window_seconds: int = int(os.getenv("AUTH_RATE_WINDOW_SECONDS", "60"))
+    auth_account_rate_limit: int = int(os.getenv("AUTH_ACCOUNT_RATE_LIMIT", "10"))
+    auth_account_rate_window_seconds: int = int(os.getenv("AUTH_ACCOUNT_RATE_WINDOW_SECONDS", "60"))
     clock_rate_limit: int = int(os.getenv("CLOCK_RATE_LIMIT", "60"))
     clock_rate_window_seconds: int = int(os.getenv("CLOCK_RATE_WINDOW_SECONDS", "60"))
     clock_employee_rate_limit: int = int(os.getenv("CLOCK_EMPLOYEE_RATE_LIMIT", "20"))
