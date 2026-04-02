@@ -6,6 +6,7 @@
 - Set `APP_ENVIRONMENT=production`
 - Set a strong `SECRET_KEY`
 - Set `ALLOW_DEMO_BOOTSTRAP=false`
+- Set `MAX_REQUEST_BYTES` (default `1048576`) to cap request size
 - Set production `CORS_ORIGINS`
 - Set `DATABASE_URL` to PostgreSQL
 

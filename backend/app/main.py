@@ -4,8 +4,9 @@ import hmac
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -152,6 +153,18 @@ def validate_runtime_configuration() -> None:
             raise RuntimeError("SECRET_KEY must be changed for production or staging.")
         if settings.allow_demo_bootstrap:
             raise RuntimeError("ALLOW_DEMO_BOOTSTRAP must be false for production or staging.")
+
+
+@app.middleware("http")
+async def enforce_request_size_limit(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > settings.max_request_bytes:
+                return JSONResponse(status_code=413, content={"detail": "Request payload too large."})
+        except ValueError:
+            return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header."})
+    return await call_next(request)
 
 
 def get_current_user(

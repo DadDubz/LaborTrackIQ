@@ -106,6 +106,23 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             settings.allow_demo_bootstrap = original_bootstrap
             settings.database_url = original_database_url
 
+    def test_request_payload_too_large_is_rejected(self):
+        headers = self.admin_headers()
+        oversized_body = "x" * (settings.max_request_bytes + 1)
+        response = self.client.post(
+            "/api/notes",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": None,
+                "title": "Oversized payload",
+                "body": oversized_body,
+                "is_active": True,
+                "show_at_clock_in": True,
+            },
+        )
+        self.assertEqual(response.status_code, 413, response.text)
+
     def test_duplicate_employee_identity_is_rejected(self):
         headers = self.admin_headers()
 
