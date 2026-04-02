@@ -7,7 +7,7 @@
 - Set a strong `SECRET_KEY`
 - Set `ALLOW_DEMO_BOOTSTRAP=false`
 - Set `MAX_REQUEST_BYTES` (default `1048576`) to cap request size
-- Set auth/clock rate limits (`AUTH_RATE_LIMIT`, `CLOCK_RATE_LIMIT`) for your traffic profile
+- Set auth/clock rate limits (`AUTH_RATE_LIMIT`, `CLOCK_RATE_LIMIT`, `CLOCK_EMPLOYEE_RATE_LIMIT`) for your traffic profile
 - Set `TRUST_PROXY_HEADERS=true` only when deployed behind a trusted reverse proxy
 - Set production `CORS_ORIGINS`
 - Set `DATABASE_URL` to PostgreSQL

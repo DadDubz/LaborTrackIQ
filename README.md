@@ -50,7 +50,7 @@ docs/
 ## Local Setup
 
 1. Copy `.env.example` to `.env`
-2. Set `APP_ENVIRONMENT`, `SECRET_KEY`, `CORS_ORIGINS`, and `TRUST_PROXY_HEADERS` for your environment, set `ALLOW_DEMO_BOOTSTRAP=false` outside local development, and keep `MAX_REQUEST_BYTES` at a safe limit
+2. Set `APP_ENVIRONMENT`, `SECRET_KEY`, `CORS_ORIGINS`, `TRUST_PROXY_HEADERS`, and rate-limit settings (`AUTH_RATE_LIMIT`, `CLOCK_RATE_LIMIT`, `CLOCK_EMPLOYEE_RATE_LIMIT`) for your environment, set `ALLOW_DEMO_BOOTSTRAP=false` outside local development, and keep `MAX_REQUEST_BYTES` at a safe limit
 3. Add your QuickBooks OAuth credentials when you are ready to test live QuickBooks auth
 4. Install backend requirements with `.venv/bin/pip install -r backend/requirements.txt`
 5. Copy `frontend/.env.example` to `frontend/.env` and set `VITE_API_BASE_URL` for your environment (`VITE_ENABLE_DEMO_BOOTSTRAP` should stay `false` outside local demos)

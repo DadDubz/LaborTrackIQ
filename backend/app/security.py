@@ -35,7 +35,10 @@ def verify_password(password: str, stored_hash: Optional[str]) -> bool:
         return False
 
     salt_hex, digest_hex = stored_hash.split(":", 1)
-    salt = bytes.fromhex(salt_hex)
+    try:
+        salt = bytes.fromhex(salt_hex)
+    except ValueError:
+        return False
     candidate = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 200_000)
     return hmac.compare_digest(candidate.hex(), digest_hex)
 

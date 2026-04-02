@@ -1817,13 +1817,20 @@ def delete_note(
 
 @app.post(f"{settings.api_prefix}/clock/lookup", response_model=ClockLookupResponse)
 def lookup_clock_context(payload: ClockAction, request: Request, db: Session = Depends(get_db)):
+    normalized_employee_number = payload.employee_number.strip()
     _enforce_rate_limit(
         scope="clock_lookup",
-        key=f"{_request_client_ip(request)}:{payload.employee_number.strip()}",
+        key=f"{_request_client_ip(request)}:{normalized_employee_number}",
         limit=settings.clock_rate_limit,
         window_seconds=settings.clock_rate_window_seconds,
     )
-    employee = find_employee_by_clock_credentials(payload.organization_id, payload.employee_number, payload.pin_code, db)
+    _enforce_rate_limit(
+        scope="clock_employee_auth",
+        key=f"{payload.organization_id}:{normalized_employee_number}",
+        limit=settings.clock_employee_rate_limit,
+        window_seconds=settings.clock_employee_rate_window_seconds,
+    )
+    employee = find_employee_by_clock_credentials(payload.organization_id, normalized_employee_number, payload.pin_code, db)
     shifts, notes = load_employee_clock_context(employee.id, payload.organization_id, db)
     return ClockLookupResponse(
         employee_name=employee.full_name,
@@ -1835,13 +1842,20 @@ def lookup_clock_context(payload: ClockAction, request: Request, db: Session = D
 
 @app.post(f"{settings.api_prefix}/clock/in-out", response_model=ClockResponse)
 def clock_in_out(payload: ClockAction, request: Request, db: Session = Depends(get_db)):
+    normalized_employee_number = payload.employee_number.strip()
     _enforce_rate_limit(
         scope="clock_in_out",
-        key=f"{_request_client_ip(request)}:{payload.employee_number.strip()}",
+        key=f"{_request_client_ip(request)}:{normalized_employee_number}",
         limit=settings.clock_rate_limit,
         window_seconds=settings.clock_rate_window_seconds,
     )
-    employee = find_employee_by_clock_credentials(payload.organization_id, payload.employee_number, payload.pin_code, db)
+    _enforce_rate_limit(
+        scope="clock_employee_auth",
+        key=f"{payload.organization_id}:{normalized_employee_number}",
+        limit=settings.clock_employee_rate_limit,
+        window_seconds=settings.clock_employee_rate_window_seconds,
+    )
+    employee = find_employee_by_clock_credentials(payload.organization_id, normalized_employee_number, payload.pin_code, db)
     active_entry = db.scalar(
         select(TimeEntry)
         .where(and_(TimeEntry.employee_id == employee.id, TimeEntry.clock_out_at.is_(None)))

@@ -237,9 +237,13 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
     def test_clock_lookup_rate_limit_returns_429_when_exceeded(self):
         original_limit = settings.clock_rate_limit
         original_window = settings.clock_rate_window_seconds
+        original_employee_limit = settings.clock_employee_rate_limit
+        original_employee_window = settings.clock_employee_rate_window_seconds
         try:
             settings.clock_rate_limit = 2
             settings.clock_rate_window_seconds = 60
+            settings.clock_employee_rate_limit = 100
+            settings.clock_employee_rate_window_seconds = 60
             reset_rate_limit_state()
 
             payload = {
@@ -257,6 +261,40 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         finally:
             settings.clock_rate_limit = original_limit
             settings.clock_rate_window_seconds = original_window
+            settings.clock_employee_rate_limit = original_employee_limit
+            settings.clock_employee_rate_window_seconds = original_employee_window
+            reset_rate_limit_state()
+
+    def test_clock_employee_rate_limit_applies_across_sources(self):
+        original_limit = settings.clock_rate_limit
+        original_window = settings.clock_rate_window_seconds
+        original_employee_limit = settings.clock_employee_rate_limit
+        original_employee_window = settings.clock_employee_rate_window_seconds
+        try:
+            settings.clock_rate_limit = 100
+            settings.clock_rate_window_seconds = 60
+            settings.clock_employee_rate_limit = 2
+            settings.clock_employee_rate_window_seconds = 60
+            reset_rate_limit_state()
+
+            payload = {
+                "organization_id": 1,
+                "employee_number": "1001",
+                "pin_code": "1234",
+                "source": "test-suite",
+            }
+
+            first = self.client.post("/api/clock/lookup", headers={"X-Forwarded-For": "10.0.0.1"}, json=payload)
+            self.assertEqual(first.status_code, 200, first.text)
+            second = self.client.post("/api/clock/lookup", headers={"X-Forwarded-For": "10.0.0.2"}, json=payload)
+            self.assertEqual(second.status_code, 200, second.text)
+            blocked = self.client.post("/api/clock/lookup", headers={"X-Forwarded-For": "10.0.0.3"}, json=payload)
+            self.assertEqual(blocked.status_code, 429, blocked.text)
+        finally:
+            settings.clock_rate_limit = original_limit
+            settings.clock_rate_window_seconds = original_window
+            settings.clock_employee_rate_limit = original_employee_limit
+            settings.clock_employee_rate_window_seconds = original_employee_window
             reset_rate_limit_state()
 
     def test_duplicate_employee_identity_is_rejected(self):
@@ -364,6 +402,25 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             self.assertIsNotNone(profile)
             self.assertTrue(bool(profile.pin_hash))
             self.assertNotEqual(profile.pin_code, "1234")
+
+    def test_malformed_pin_hash_fails_closed(self):
+        with Session(engine) as db:
+            profile = db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_number == "1001"))
+            self.assertIsNotNone(profile)
+            profile.pin_hash = "malformed-hash"
+            db.add(profile)
+            db.commit()
+
+        response = self.client.post(
+            "/api/clock/lookup",
+            json={
+                "organization_id": 1,
+                "employee_number": "1001",
+                "pin_code": "1234",
+                "source": "test-suite",
+            },
+        )
+        self.assertEqual(response.status_code, 404, response.text)
 
     def test_report_recipient_duplicate_and_restore_flow(self):
         headers = self.admin_headers()
