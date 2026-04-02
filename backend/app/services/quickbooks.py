@@ -48,44 +48,69 @@ def token_expiry(expires_in_seconds: int) -> str:
     return (datetime.utcnow() + timedelta(seconds=expires_in_seconds)).isoformat()
 
 
+def _quickbooks_error_detail(response: httpx.Response, fallback: str) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+
+    if isinstance(payload, dict):
+        fault = payload.get("Fault")
+        if isinstance(fault, dict):
+            errors = fault.get("Error")
+            if isinstance(errors, list) and errors:
+                first = errors[0]
+                if isinstance(first, dict):
+                    message = first.get("Message") or first.get("Detail")
+                    if isinstance(message, str) and message.strip():
+                        return f"{fallback}: {message.strip()}"
+    return f"{fallback} (HTTP {response.status_code})."
+
+
 def exchange_code_for_tokens(code: str) -> dict:
     require_quickbooks_credentials()
     basic = b64encode(f"{settings.quickbooks_client_id}:{settings.quickbooks_client_secret}".encode("utf-8")).decode("utf-8")
-    response = httpx.post(
-        TOKEN_URL,
-        headers={
-            "Accept": "application/json",
-            "Authorization": f"Basic {basic}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        data={
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": settings.quickbooks_redirect_uri,
-        },
-        timeout=20.0,
-    )
+    try:
+        response = httpx.post(
+            TOKEN_URL,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Basic {basic}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": settings.quickbooks_redirect_uri,
+            },
+            timeout=20.0,
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="QuickBooks token exchange failed due to a network error.") from exc
     if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"QuickBooks token exchange failed: {response.text}")
+        raise HTTPException(status_code=502, detail=_quickbooks_error_detail(response, "QuickBooks token exchange failed"))
     return response.json()
 
 
 def refresh_tokens(refresh_token: str) -> dict:
     require_quickbooks_credentials()
     basic = b64encode(f"{settings.quickbooks_client_id}:{settings.quickbooks_client_secret}".encode("utf-8")).decode("utf-8")
-    response = httpx.post(
-        TOKEN_URL,
-        headers={
-            "Accept": "application/json",
-            "Authorization": f"Basic {basic}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        data={
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-        },
-        timeout=20.0,
-    )
+    try:
+        response = httpx.post(
+            TOKEN_URL,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Basic {basic}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            },
+            timeout=20.0,
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="QuickBooks token refresh failed due to a network error.") from exc
     if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"QuickBooks token refresh failed: {response.text}")
+        raise HTTPException(status_code=502, detail=_quickbooks_error_detail(response, "QuickBooks token refresh failed"))
     return response.json()

@@ -367,6 +367,37 @@ function rangesOverlap(startA: string, endA: string, startB: string, endB: strin
   return new Date(startA).getTime() < new Date(endB).getTime() && new Date(startB).getTime() < new Date(endA).getTime();
 }
 
+function parseJsonSafe(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function readStoredAdminUser(raw: string | null): User | null {
+  if (!raw) {
+    return null;
+  }
+  const parsed = parseJsonSafe(raw);
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+  const candidate = parsed as Partial<User>;
+  if (typeof candidate.id !== "number" || typeof candidate.full_name !== "string" || typeof candidate.role !== "string") {
+    return null;
+  }
+  return {
+    id: candidate.id,
+    full_name: candidate.full_name,
+    email: typeof candidate.email === "string" ? candidate.email : null,
+    role: candidate.role,
+    is_active: Boolean(candidate.is_active),
+    employee_number: typeof candidate.employee_number === "string" ? candidate.employee_number : null,
+    job_title: typeof candidate.job_title === "string" ? candidate.job_title : null,
+  };
+}
+
 export default function App() {
   const [organizationId, setOrganizationId] = useState(DEMO_BOOTSTRAP_ENABLED ? "1" : "");
   const [employeeNumber, setEmployeeNumber] = useState(DEMO_BOOTSTRAP_ENABLED ? "1001" : "");
@@ -523,8 +554,11 @@ export default function App() {
     if (storedToken) {
       setToken(storedToken);
     }
-    if (storedUser) {
-      setAdminUser(JSON.parse(storedUser) as User);
+    const parsedUser = readStoredAdminUser(storedUser);
+    if (parsedUser) {
+      setAdminUser(parsedUser);
+    } else if (storedUser) {
+      window.localStorage.removeItem("labortrackiq_user");
     }
     if (storedOrg) {
       setOrganizationId(storedOrg);
@@ -562,7 +596,7 @@ export default function App() {
     }
   }, [token, organizationId]);
 
-  async function apiFetch(path: string, options: RequestInit = {}, accessToken = token) {
+  async function apiFetch<T = any>(path: string, options: RequestInit = {}, accessToken = token): Promise<T> {
     const headers = new Headers(options.headers ?? {});
     if (!headers.has("Content-Type") && options.body) {
       headers.set("Content-Type", "application/json");
@@ -572,11 +606,14 @@ export default function App() {
     }
     const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
     const raw = await response.text();
-    const data = raw ? JSON.parse(raw) : {};
+    const data = raw ? parseJsonSafe(raw) : {};
     if (!response.ok) {
-      throw new Error(data.detail ?? "Request failed.");
+      if (data && typeof data === "object" && "detail" in data && typeof (data as { detail?: unknown }).detail === "string") {
+        throw new Error((data as { detail: string }).detail);
+      }
+      throw new Error(raw || "Request failed.");
     }
-    return data;
+    return (data ?? {}) as T;
   }
 
   async function employeeApiFetch(path: string, options: RequestInit = {}) {
