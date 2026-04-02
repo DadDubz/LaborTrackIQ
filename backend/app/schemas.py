@@ -445,6 +445,19 @@ class SetupOverview(BaseModel):
     checklist: list[SetupChecklistItem]
 
 
+class AuditEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    organization_id: int
+    actor_user_id: Optional[int]
+    action: str
+    entity_type: str
+    entity_id: Optional[int]
+    detail: Optional[str]
+    created_at: datetime
+
+
 class TimeOffRequestCreate(BaseModel):
     organization_id: int
     employee_id: int

@@ -130,6 +130,12 @@ The smoke tests cover launch-critical flows like employee self-service auth, dup
 - `GET /health/db`
 - `GET /health/ready`
 
+## Audit Events
+
+Admin and manager actions are tracked in organization audit events:
+
+- `GET /api/organizations/{organization_id}/audit-events?limit=100`
+
 ## Docker Compose
 
 You can run backend + PostgreSQL with:

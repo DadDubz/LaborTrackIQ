@@ -213,6 +213,31 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         )
         self.assertEqual(duplicate_email.status_code, 400, duplicate_email.text)
 
+    def test_admin_audit_events_capture_user_creation(self):
+        headers = self.admin_headers()
+        created = self.client.post(
+            "/api/users",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "full_name": "Audit Employee",
+                "email": "audit.employee@demodiner.com",
+                "role": "employee",
+                "employee_number": "1008",
+                "pin_code": "1111",
+                "job_title": "Audit Role",
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        created_user_id = created.json()["id"]
+
+        events = self.client.get("/api/organizations/1/audit-events", headers=headers)
+        self.assertEqual(events.status_code, 200, events.text)
+        actions = [event["action"] for event in events.json()]
+        self.assertIn("user_created", actions)
+        matching = [event for event in events.json() if event["action"] == "user_created" and event["entity_id"] == created_user_id]
+        self.assertTrue(matching)
+
     def test_employee_pin_is_not_stored_plaintext(self):
         with Session(engine) as db:
             profile = db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_number == "1001"))

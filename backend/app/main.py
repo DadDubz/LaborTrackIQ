@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import Base, engine, get_db
 from app.models import (
+    AuditEvent,
     EmployeeAvailabilityRequest,
     EmployeeProfile,
     IntegrationConnection,
@@ -40,6 +41,7 @@ from app.models import (
     UserRole,
 )
 from app.schemas import (
+    AuditEventRead,
     AvailabilityRequestCreate,
     AvailabilityRequestRead,
     AvailabilityRequestUpdate,
@@ -567,6 +569,27 @@ def validate_shift_window(shift_date: date, start_at: datetime, end_at: datetime
         raise HTTPException(status_code=400, detail="Shift start/end must match the selected shift date.")
 
 
+def record_audit_event(
+    organization_id: int,
+    action: str,
+    entity_type: str,
+    db: Session,
+    actor_user_id: Optional[int] = None,
+    entity_id: Optional[int] = None,
+    detail: Optional[str] = None,
+) -> None:
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            detail=detail,
+        )
+    )
+
+
 def get_time_off_request_for_admin(request_id: int, current_user: User, db: Session) -> TimeOffRequest:
     request = db.get(TimeOffRequest, request_id)
     if not request:
@@ -826,6 +849,15 @@ def create_user(
             profile
         )
 
+    record_audit_event(
+        organization_id=payload.organization_id,
+        actor_user_id=current_user.id,
+        action="user_created",
+        entity_type="user",
+        entity_id=user.id,
+        detail=f"role={payload.role.value}",
+        db=db,
+    )
     db.commit()
     db.refresh(user)
     return serialize_user(user)
@@ -865,6 +897,15 @@ def update_user(
         _set_employee_pin(profile, payload.pin_code)
         profile.job_title = payload.job_title.strip() if payload.job_title else None
 
+    record_audit_event(
+        organization_id=user.organization_id,
+        actor_user_id=current_user.id,
+        action="user_updated",
+        entity_type="user",
+        entity_id=user.id,
+        detail=f"is_active={user.is_active}",
+        db=db,
+    )
     db.commit()
     db.refresh(user)
     return serialize_user(user)
@@ -881,6 +922,15 @@ def delete_user(
         raise HTTPException(status_code=400, detail="You cannot delete your own account.")
 
     user.is_active = False
+    record_audit_event(
+        organization_id=user.organization_id,
+        actor_user_id=current_user.id,
+        action="user_archived",
+        entity_type="user",
+        entity_id=user.id,
+        detail=f"full_name={user.full_name}",
+        db=db,
+    )
     db.commit()
     return {"message": f"{user.full_name} archived successfully."}
 
@@ -987,6 +1037,15 @@ def publish_schedule_week(
             snapshot_data=[build_shift_snapshot(shift) for shift in shifts],
         )
     )
+    record_audit_event(
+        organization_id=organization_id,
+        actor_user_id=current_user.id,
+        action="schedule_published",
+        entity_type="schedule_week",
+        entity_id=None,
+        detail=f"week_start={payload.week_start.isoformat()} shifts={len(shifts)}",
+        db=db,
+    )
 
     db.commit()
     return SchedulePublishResponse(
@@ -1035,6 +1094,15 @@ def unpublish_schedule_week(
             published_by_name=current_user.full_name,
             snapshot_data=[build_shift_snapshot(shift) for shift in shifts],
         )
+    )
+    record_audit_event(
+        organization_id=organization_id,
+        actor_user_id=current_user.id,
+        action="schedule_unpublished",
+        entity_type="schedule_week",
+        entity_id=None,
+        detail=f"week_start={payload.week_start.isoformat()} shifts={len(shifts)}",
+        db=db,
     )
 
     db.commit()
@@ -1559,6 +1627,15 @@ def update_shift_change_request(
     request.status = payload.status
     request.manager_response = payload.manager_response
     request.reviewed_at = datetime.utcnow()
+    record_audit_event(
+        organization_id=request.organization_id,
+        actor_user_id=current_user.id,
+        action="shift_change_reviewed",
+        entity_type="shift_change_request",
+        entity_id=request.id,
+        detail=f"status={request.status.value}",
+        db=db,
+    )
     db.commit()
     db.refresh(request)
     return serialize_shift_change_request(request, db)
@@ -1663,6 +1740,15 @@ def update_time_off_request(
     request = get_time_off_request_for_admin(request_id, current_user, db)
     request.status = payload.status
     request.manager_response = payload.manager_response
+    record_audit_event(
+        organization_id=request.organization_id,
+        actor_user_id=current_user.id,
+        action="time_off_reviewed",
+        entity_type="time_off_request",
+        entity_id=request.id,
+        detail=f"status={request.status.value}",
+        db=db,
+    )
     db.commit()
     db.refresh(request)
     return request
@@ -1822,6 +1908,15 @@ def update_time_entry(
         raise HTTPException(status_code=400, detail="A time entry must be clocked out before it can be approved.")
     entry.approved = payload.approved
     entry.notes = payload.notes
+    record_audit_event(
+        organization_id=entry.organization_id,
+        actor_user_id=current_user.id,
+        action="time_entry_reviewed",
+        entity_type="time_entry",
+        entity_id=entry.id,
+        detail=f"approved={entry.approved}",
+        db=db,
+    )
     db.commit()
     db.refresh(entry)
     return TimeEntryRead.model_validate(entry)
@@ -1955,6 +2050,15 @@ def connect_quickbooks(
         )
         db.add(integration)
 
+    record_audit_event(
+        organization_id=organization_id,
+        actor_user_id=current_user.id,
+        action="integration_connected",
+        entity_type="integration",
+        entity_id=integration.id if integration.id else None,
+        detail=f"provider={IntegrationProvider.QUICKBOOKS.value}",
+        db=db,
+    )
     db.commit()
     db.refresh(integration)
     return QuickBooksActionResponse(
@@ -2090,6 +2194,15 @@ def disconnect_integration(
         **(integration.settings or {}),
         "last_export_status": "disconnected",
     }
+    record_audit_event(
+        organization_id=integration.organization_id,
+        actor_user_id=current_user.id,
+        action="integration_disconnected",
+        entity_type="integration",
+        entity_id=integration.id,
+        detail=f"provider={integration.provider.value}",
+        db=db,
+    )
     db.commit()
     db.refresh(integration)
     return QuickBooksActionResponse(
@@ -2219,6 +2332,24 @@ def list_integrations(
     validate_organization_access(organization_id, current_user)
     integrations = db.scalars(select(IntegrationConnection).where(IntegrationConnection.organization_id == organization_id)).all()
     return list(integrations)
+
+
+@app.get(f"{settings.api_prefix}/organizations/{{organization_id}}/audit-events", response_model=list[AuditEventRead])
+def list_audit_events(
+    organization_id: int,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
+):
+    validate_organization_access(organization_id, current_user)
+    safe_limit = max(1, min(limit, 500))
+    events = db.scalars(
+        select(AuditEvent)
+        .where(AuditEvent.organization_id == organization_id)
+        .order_by(AuditEvent.created_at.desc())
+        .limit(safe_limit)
+    ).all()
+    return [AuditEventRead.model_validate(event) for event in events]
 
 
 @app.get(f"{settings.api_prefix}/organizations/{{organization_id}}/dashboard-summary", response_model=DashboardSummary)

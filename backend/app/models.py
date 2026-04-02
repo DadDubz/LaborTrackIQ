@@ -293,3 +293,16 @@ class ScheduleAcknowledgment(Base):
     employee_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     week_start: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     acknowledged_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
+    actor_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    entity_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    entity_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
