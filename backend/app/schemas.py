@@ -164,8 +164,8 @@ class AvailabilityRequestCreate(BaseModel):
     organization_id: int
     employee_id: int
     weekday: Optional[int] = Field(default=None, ge=0, le=6)
-    start_time: str
-    end_time: str
+    start_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    end_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     note: Optional[str] = None

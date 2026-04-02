@@ -474,6 +474,36 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         )
         self.assertEqual(short_password.status_code, 422, short_password.text)
 
+    def test_availability_request_time_format_validation(self):
+        invalid_time = self.client.post(
+            "/api/availability-requests",
+            headers=self.employee_headers(),
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "weekday": 2,
+                "start_time": "9:00",
+                "end_time": "17:00",
+                "note": "Invalid time format",
+            },
+        )
+        self.assertEqual(invalid_time.status_code, 422, invalid_time.text)
+
+    def test_availability_request_requires_end_after_start(self):
+        invalid_window = self.client.post(
+            "/api/availability-requests",
+            headers=self.employee_headers(),
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "weekday": 2,
+                "start_time": "17:00",
+                "end_time": "09:00",
+                "note": "End before start",
+            },
+        )
+        self.assertEqual(invalid_window.status_code, 400, invalid_window.text)
+
     def test_admin_audit_events_capture_user_creation(self):
         headers = self.admin_headers()
         created = self.client.post(

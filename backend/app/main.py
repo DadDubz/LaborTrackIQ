@@ -1510,6 +1510,8 @@ def create_availability_request(
         raise HTTPException(status_code=400, detail="weekday must be between 0 and 6.")
     if payload.start_date and payload.end_date and payload.end_date < payload.start_date:
         raise HTTPException(status_code=400, detail="end_date must be on or after start_date.")
+    if payload.end_time <= payload.start_time:
+        raise HTTPException(status_code=400, detail="end_time must be after start_time.")
     stored_weekday = payload.weekday if payload.weekday is not None else -1
     request = EmployeeAvailabilityRequest(
         organization_id=payload.organization_id,
