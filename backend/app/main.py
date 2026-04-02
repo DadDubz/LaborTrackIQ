@@ -2027,8 +2027,20 @@ def create_integration(
     current_user: User = Depends(require_admin_user),
 ):
     validate_organization_access(payload.organization_id, current_user)
-    integration = IntegrationConnection(**payload.model_dump())
-    db.add(integration)
+    integration = db.scalar(
+        select(IntegrationConnection).where(
+            and_(
+                IntegrationConnection.organization_id == payload.organization_id,
+                IntegrationConnection.provider == payload.provider,
+            )
+        )
+    )
+    if integration:
+        integration.status = payload.status
+        integration.settings = payload.settings
+    else:
+        integration = IntegrationConnection(**payload.model_dump())
+        db.add(integration)
     db.commit()
     db.refresh(integration)
     return integration

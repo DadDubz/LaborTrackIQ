@@ -4,7 +4,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -220,6 +220,7 @@ class ReportSubscription(Base):
 
 class IntegrationConnection(Base):
     __tablename__ = "integration_connections"
+    __table_args__ = (UniqueConstraint("organization_id", "provider", name="uq_integration_connections_org_provider"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)

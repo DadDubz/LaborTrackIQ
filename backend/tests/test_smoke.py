@@ -533,6 +533,40 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         self.assertEqual(restored.status_code, 200, restored.text)
         self.assertEqual(restored.json()["id"], first_id)
 
+    def test_integration_create_is_idempotent_per_provider(self):
+        headers = self.admin_headers()
+        first = self.client.post(
+            "/api/integrations",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "provider": "xero",
+                "status": "pending",
+                "settings": {"mode": "initial"},
+            },
+        )
+        self.assertEqual(first.status_code, 200, first.text)
+        first_id = first.json()["id"]
+
+        second = self.client.post(
+            "/api/integrations",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "provider": "xero",
+                "status": "connected",
+                "settings": {"mode": "updated"},
+            },
+        )
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual(second.json()["id"], first_id)
+        self.assertEqual(second.json()["status"], "connected")
+
+        integrations = self.client.get("/api/organizations/1/integrations", headers=headers)
+        self.assertEqual(integrations.status_code, 200, integrations.text)
+        xero_integrations = [item for item in integrations.json() if item["provider"] == "xero"]
+        self.assertEqual(len(xero_integrations), 1)
+
     def test_quickbooks_export_includes_only_approved_closed_entries(self):
         headers = self.admin_headers()
 
