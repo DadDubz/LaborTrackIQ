@@ -127,9 +127,11 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
     def test_login_rate_limit_returns_429_when_exceeded(self):
         original_limit = settings.auth_rate_limit
         original_window = settings.auth_rate_window_seconds
+        original_trust_proxy_headers = settings.trust_proxy_headers
         try:
             settings.auth_rate_limit = 2
             settings.auth_rate_window_seconds = 60
+            settings.trust_proxy_headers = False
             reset_rate_limit_state()
 
             for _ in range(2):
@@ -155,6 +157,81 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         finally:
             settings.auth_rate_limit = original_limit
             settings.auth_rate_window_seconds = original_window
+            settings.trust_proxy_headers = original_trust_proxy_headers
+            reset_rate_limit_state()
+
+    def test_login_rate_limit_ignores_forwarded_for_when_proxy_headers_untrusted(self):
+        original_limit = settings.auth_rate_limit
+        original_window = settings.auth_rate_window_seconds
+        original_trust_proxy_headers = settings.trust_proxy_headers
+        try:
+            settings.auth_rate_limit = 1
+            settings.auth_rate_window_seconds = 60
+            settings.trust_proxy_headers = False
+            reset_rate_limit_state()
+
+            first = self.client.post(
+                "/api/auth/login",
+                headers={"X-Forwarded-For": "10.0.0.1"},
+                json={
+                    "organization_id": 1,
+                    "email": "admin@demodiner.com",
+                    "password": "wrong-password",
+                },
+            )
+            self.assertEqual(first.status_code, 401, first.text)
+
+            second = self.client.post(
+                "/api/auth/login",
+                headers={"X-Forwarded-For": "10.0.0.2"},
+                json={
+                    "organization_id": 1,
+                    "email": "admin@demodiner.com",
+                    "password": "wrong-password",
+                },
+            )
+            self.assertEqual(second.status_code, 429, second.text)
+        finally:
+            settings.auth_rate_limit = original_limit
+            settings.auth_rate_window_seconds = original_window
+            settings.trust_proxy_headers = original_trust_proxy_headers
+            reset_rate_limit_state()
+
+    def test_login_rate_limit_uses_forwarded_for_when_proxy_headers_trusted(self):
+        original_limit = settings.auth_rate_limit
+        original_window = settings.auth_rate_window_seconds
+        original_trust_proxy_headers = settings.trust_proxy_headers
+        try:
+            settings.auth_rate_limit = 1
+            settings.auth_rate_window_seconds = 60
+            settings.trust_proxy_headers = True
+            reset_rate_limit_state()
+
+            first = self.client.post(
+                "/api/auth/login",
+                headers={"X-Forwarded-For": "10.0.0.1"},
+                json={
+                    "organization_id": 1,
+                    "email": "admin@demodiner.com",
+                    "password": "wrong-password",
+                },
+            )
+            self.assertEqual(first.status_code, 401, first.text)
+
+            second = self.client.post(
+                "/api/auth/login",
+                headers={"X-Forwarded-For": "10.0.0.2"},
+                json={
+                    "organization_id": 1,
+                    "email": "admin@demodiner.com",
+                    "password": "wrong-password",
+                },
+            )
+            self.assertEqual(second.status_code, 401, second.text)
+        finally:
+            settings.auth_rate_limit = original_limit
+            settings.auth_rate_window_seconds = original_window
+            settings.trust_proxy_headers = original_trust_proxy_headers
             reset_rate_limit_state()
 
     def test_clock_lookup_rate_limit_returns_429_when_exceeded(self):
@@ -240,6 +317,21 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             },
         )
         self.assertEqual(invalid_pin.status_code, 422, invalid_pin.text)
+
+    def test_admin_user_password_validation_rejects_short_values(self):
+        headers = self.admin_headers()
+        short_password = self.client.post(
+            "/api/users",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "full_name": "Short Password Manager",
+                "email": "short.password.manager@demodiner.com",
+                "role": "manager",
+                "password": "short7",
+            },
+        )
+        self.assertEqual(short_password.status_code, 422, short_password.text)
 
     def test_admin_audit_events_capture_user_creation(self):
         headers = self.admin_headers()

@@ -22,7 +22,7 @@ class OrganizationCreate(BaseModel):
     timezone: str = "America/Chicago"
     admin_name: str
     admin_email: EmailStr
-    admin_password: str
+    admin_password: str = Field(min_length=8, max_length=128)
 
 
 class UserCreate(BaseModel):
@@ -30,7 +30,7 @@ class UserCreate(BaseModel):
     full_name: str
     email: Optional[EmailStr] = None
     role: UserRole
-    password: Optional[str] = None
+    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     employee_number: Optional[str] = Field(default=None, min_length=1, max_length=32, pattern=r"^[A-Za-z0-9-]+$")
     pin_code: Optional[str] = Field(default=None, min_length=4, max_length=12, pattern=r"^\d{4,12}$")
     job_title: Optional[str] = None
@@ -52,7 +52,7 @@ class UserRead(BaseModel):
 class UserUpdate(BaseModel):
     full_name: str
     email: Optional[EmailStr] = None
-    password: Optional[str] = None
+    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     employee_number: Optional[str] = Field(default=None, min_length=1, max_length=32, pattern=r"^[A-Za-z0-9-]+$")
     pin_code: Optional[str] = Field(default=None, min_length=4, max_length=12, pattern=r"^\d{4,12}$")
     job_title: Optional[str] = None
@@ -393,7 +393,7 @@ class ClockLookupResponse(BaseModel):
 class LoginRequest(BaseModel):
     organization_id: int
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=128)
 
 
 class LoginResponse(BaseModel):

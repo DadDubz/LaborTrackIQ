@@ -46,6 +46,7 @@ class Settings(BaseModel):
     auth_rate_window_seconds: int = int(os.getenv("AUTH_RATE_WINDOW_SECONDS", "60"))
     clock_rate_limit: int = int(os.getenv("CLOCK_RATE_LIMIT", "60"))
     clock_rate_window_seconds: int = int(os.getenv("CLOCK_RATE_WINDOW_SECONDS", "60"))
+    trust_proxy_headers: bool = _parse_bool(os.getenv("TRUST_PROXY_HEADERS"), False)
     cors_origins: List[str] = _parse_csv(
         os.getenv("CORS_ORIGINS"),
         ["http://127.0.0.1:5173", "http://localhost:5173"],

@@ -183,9 +183,10 @@ def reset_rate_limit_state() -> None:
 
 
 def _request_client_ip(request: Request) -> str:
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
+    if settings.trust_proxy_headers:
+        forwarded_for = request.headers.get("x-forwarded-for")
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip()
     if request.client and request.client.host:
         return request.client.host
     return "unknown"
