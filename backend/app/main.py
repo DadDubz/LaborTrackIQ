@@ -104,10 +104,9 @@ from app.services.quickbooks import (
 )
 
 
-Base.metadata.create_all(bind=engine)
-
-
 def ensure_schedule_shift_publish_columns() -> None:
+    if engine.dialect.name != "sqlite":
+        return
     with engine.begin() as connection:
         columns = {row[1] for row in connection.execute(text("PRAGMA table_info(schedule_shifts)"))}
         if "is_published" not in columns:
@@ -138,7 +137,9 @@ def ensure_schedule_shift_publish_columns() -> None:
             connection.execute(text("ALTER TABLE employee_availability_requests ADD COLUMN note TEXT"))
 
 
-ensure_schedule_shift_publish_columns()
+if engine.dialect.name == "sqlite":
+    Base.metadata.create_all(bind=engine)
+    ensure_schedule_shift_publish_columns()
 
 app = FastAPI(title=settings.app_name)
 
