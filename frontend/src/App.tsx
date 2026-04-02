@@ -608,6 +608,12 @@ export default function App() {
     const raw = await response.text();
     const data = raw ? parseJsonSafe(raw) : {};
     if (!response.ok) {
+      if (response.status === 401 && accessToken) {
+        setAdminUser(null);
+        setToken("");
+        window.localStorage.removeItem("labortrackiq_token");
+        window.localStorage.removeItem("labortrackiq_user");
+      }
       if (data && typeof data === "object" && "detail" in data && typeof (data as { detail?: unknown }).detail === "string") {
         throw new Error((data as { detail: string }).detail);
       }
