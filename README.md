@@ -53,9 +53,10 @@ docs/
 2. Set `APP_ENVIRONMENT`, `SECRET_KEY`, and `CORS_ORIGINS` for your environment, set `ALLOW_DEMO_BOOTSTRAP=false` outside local development, and keep `MAX_REQUEST_BYTES` at a safe limit
 3. Add your QuickBooks OAuth credentials when you are ready to test live QuickBooks auth
 4. Install backend requirements with `.venv/bin/pip install -r backend/requirements.txt`
-5. Install frontend packages with `npm install` in `frontend/`
-6. Start the API with `../.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000` from `backend/`
-7. Start the frontend with `npm run dev -- --host 127.0.0.1 --port 5173` from `frontend/`
+5. Copy `frontend/.env.example` to `frontend/.env` and set `VITE_API_BASE_URL` for your environment (`VITE_ENABLE_DEMO_BOOTSTRAP` should stay `false` outside local demos)
+6. Install frontend packages with `npm install` in `frontend/`
+7. Start the API with `../.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000` from `backend/`
+8. Start the frontend with `npm run dev -- --host 127.0.0.1 --port 5173` from `frontend/`
 
 QuickBooks setup details live in `docs/quickbooks-setup.md`.
 Deployment guidance lives in `docs/deployment-runbook.md`.

@@ -244,7 +244,9 @@ type KeypadField = "employee" | "pin";
 type RequestQueueTab = "pending" | "approved";
 type RequestBoardTab = "time_off" | "shift_changes";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const DEMO_BOOTSTRAP_ENABLED =
+  import.meta.env.DEV || String(import.meta.env.VITE_ENABLE_DEMO_BOOTSTRAP ?? "").toLowerCase() === "true";
+const API_BASE = String(import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api").replace(/\/+$/, "");
 const SHIFT_TEMPLATES = [
   { key: "morning", label: "Morning", start: "08:00", end: "14:00", role: "Morning Shift" },
   { key: "lunch", label: "Lunch", start: "10:00", end: "16:00", role: "Lunch Rush" },
@@ -420,7 +422,11 @@ export default function App() {
   const [coverageTargets, setCoverageTargets] = useState<CoverageTarget[]>([]);
   const [schedulePublications, setSchedulePublications] = useState<SchedulePublication[]>([]);
   const [adminTab, setAdminTab] = useState<AdminTab>("setup");
-  const [setupMessage, setSetupMessage] = useState("Preparing demo workspace...");
+  const [setupMessage, setSetupMessage] = useState(
+    DEMO_BOOTSTRAP_ENABLED
+      ? "Preparing demo workspace..."
+      : "Demo bootstrap is off. Sign in with your organization credentials.",
+  );
   const [exportSummary, setExportSummary] = useState<QuickBooksActionResponse["export_summary"] | null>(null);
   const [quickBooksAuth, setQuickBooksAuth] = useState<QuickBooksAuthorization | null>(null);
   const [quickBooksConfig, setQuickBooksConfig] = useState<QuickBooksConfigStatus | null>(null);
@@ -526,6 +532,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!DEMO_BOOTSTRAP_ENABLED) {
+      return;
+    }
+
     async function bootstrap() {
       try {
         const response = await fetch(`${API_BASE}/bootstrap/demo`, { method: "POST" });
