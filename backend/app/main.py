@@ -873,7 +873,11 @@ def create_user(
         detail=f"role={payload.role.value}",
         db=db,
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="That email is already in use for this organization.")
     db.refresh(user)
     return serialize_user(user)
 
@@ -921,7 +925,11 @@ def update_user(
         detail=f"is_active={user.is_active}",
         db=db,
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="That email is already in use for this organization.")
     db.refresh(user)
     return serialize_user(user)
 
