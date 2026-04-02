@@ -1531,7 +1531,11 @@ def create_shift_change_request(
 
     request = ShiftChangeRequest(**payload.model_dump())
     db.add(request)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="A pending shift change request already exists for this shift.")
     db.refresh(request)
     return serialize_shift_change_request(request, db)
 

@@ -28,6 +28,9 @@ from app.models import (
     IntegrationProvider,
     IntegrationStatus,
     Organization,
+    ScheduleShift,
+    ShiftChangeRequest,
+    ShiftChangeType,
     TimeEntry,
     User,
     UserRole,
@@ -542,6 +545,53 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
                         employee_id=employee_id,
                         clock_in_at=datetime.utcnow() + timedelta(minutes=1),
                         clock_in_source="test-suite",
+                    ),
+                ]
+            )
+            with self.assertRaises(IntegrityError):
+                db.commit()
+
+    def test_pending_shift_change_unique_per_shift_and_requester(self):
+        shift_day = date.today() + timedelta(days=2)
+        shift_start = datetime.combine(shift_day, datetime.min.time()).replace(hour=9)
+        shift_end = datetime.combine(shift_day, datetime.min.time()).replace(hour=17)
+        with Session(engine) as db:
+            db.add(
+                ScheduleShift(
+                    organization_id=1,
+                    employee_id=3,
+                    shift_date=shift_day,
+                    start_at=shift_start,
+                    end_at=shift_end,
+                    location_name="Main Store",
+                    role_label="Front Counter",
+                    is_published=False,
+                )
+            )
+            db.commit()
+            shift = db.scalar(
+                select(ScheduleShift).where(
+                    ScheduleShift.organization_id == 1,
+                    ScheduleShift.employee_id == 3,
+                    ScheduleShift.shift_date == shift_day,
+                )
+            )
+            self.assertIsNotNone(shift)
+            db.add_all(
+                [
+                    ShiftChangeRequest(
+                        organization_id=1,
+                        shift_id=shift.id,
+                        requester_employee_id=3,
+                        request_type=ShiftChangeType.PICKUP,
+                        note="First request",
+                    ),
+                    ShiftChangeRequest(
+                        organization_id=1,
+                        shift_id=shift.id,
+                        requester_employee_id=3,
+                        request_type=ShiftChangeType.PICKUP,
+                        note="Duplicate pending request",
                     ),
                 ]
             )

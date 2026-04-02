@@ -284,6 +284,16 @@ class TimeOffRequest(Base):
 
 class ShiftChangeRequest(Base):
     __tablename__ = "shift_change_requests"
+    __table_args__ = (
+        Index(
+            "uq_shift_change_pending_per_shift_requester",
+            "shift_id",
+            "requester_employee_id",
+            unique=True,
+            sqlite_where=text("status = 'PENDING'"),
+            postgresql_where=text("status = 'PENDING'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
