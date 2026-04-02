@@ -209,6 +209,9 @@ class ManagerNote(Base):
 
 class ReportSubscription(Base):
     __tablename__ = "report_subscriptions"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "email", "report_type", name="uq_report_subscriptions_org_email_type"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)

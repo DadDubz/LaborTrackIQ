@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import and_, func, or_, select, text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -1985,7 +1985,27 @@ def create_report_recipient(
         report_type=normalized_report_type,
     )
     db.add(recipient)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = db.scalar(
+            select(ReportSubscription).where(
+                and_(
+                    ReportSubscription.organization_id == payload.organization_id,
+                    ReportSubscription.email == normalized_email,
+                    ReportSubscription.report_type == normalized_report_type,
+                )
+            )
+        )
+        if existing:
+            if existing.is_active:
+                raise HTTPException(status_code=400, detail="That report recipient already exists for this report.")
+            existing.is_active = True
+            db.commit()
+            db.refresh(existing)
+            return {"id": existing.id, "message": "Report recipient restored."}
+        raise
     db.refresh(recipient)
     return {"id": recipient.id, "message": "Report recipient added."}
 
