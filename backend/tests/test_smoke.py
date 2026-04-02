@@ -624,6 +624,34 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         matching = [item for item in acknowledgments.json() if item["week_start"] == week_start]
         self.assertEqual(len(matching), 1)
 
+    def test_coverage_target_upsert_is_idempotent(self):
+        headers = self.admin_headers()
+        payload = {
+            "organization_id": 1,
+            "weekday": 2,
+            "daypart": "lunch",
+            "role_label": "Front Counter",
+            "required_headcount": 2,
+        }
+        first = self.client.post("/api/coverage-targets", headers=headers, json=payload)
+        self.assertEqual(first.status_code, 200, first.text)
+        target_id = first.json()["id"]
+
+        payload["required_headcount"] = 4
+        second = self.client.post("/api/coverage-targets", headers=headers, json=payload)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual(second.json()["id"], target_id)
+        self.assertEqual(second.json()["required_headcount"], 4)
+
+        listing = self.client.get("/api/organizations/1/coverage-targets", headers=headers)
+        self.assertEqual(listing.status_code, 200, listing.text)
+        matches = [
+            item
+            for item in listing.json()
+            if item["weekday"] == 2 and item["daypart"] == "lunch" and item["role_label"] == "Front Counter"
+        ]
+        self.assertEqual(len(matches), 1)
+
     def test_quickbooks_export_includes_only_approved_closed_entries(self):
         headers = self.admin_headers()
 

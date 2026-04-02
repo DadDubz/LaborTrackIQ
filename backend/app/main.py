@@ -1711,13 +1711,13 @@ def upsert_coverage_target(
         ScheduleCoverageTarget.organization_id == payload.organization_id,
         ScheduleCoverageTarget.weekday == payload.weekday,
         ScheduleCoverageTarget.daypart == payload.daypart,
+        ScheduleCoverageTarget.role_label.is_(None) if normalized_role is None else ScheduleCoverageTarget.role_label == normalized_role,
     ]
-    target_filters.append(
-        ScheduleCoverageTarget.role_label.is_(None) if normalized_role is None else ScheduleCoverageTarget.role_label == normalized_role
-    )
-    target = db.scalar(
-        select(ScheduleCoverageTarget).where(and_(*target_filters))
-    )
+
+    def find_target() -> Optional[ScheduleCoverageTarget]:
+        return db.scalar(select(ScheduleCoverageTarget).where(and_(*target_filters)))
+
+    target = find_target()
     if target:
         target.required_headcount = payload.required_headcount
         target.role_label = normalized_role
@@ -1727,7 +1727,16 @@ def upsert_coverage_target(
         target = ScheduleCoverageTarget(**target_data)
         db.add(target)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        target = find_target()
+        if not target:
+            raise
+        target.required_headcount = payload.required_headcount
+        target.role_label = normalized_role
+        db.commit()
     db.refresh(target)
     return target
 

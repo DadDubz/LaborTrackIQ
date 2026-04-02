@@ -143,6 +143,27 @@ class ScheduleShift(Base):
 
 class ScheduleCoverageTarget(Base):
     __tablename__ = "schedule_coverage_targets"
+    __table_args__ = (
+        Index(
+            "uq_coverage_target_org_weekday_daypart_null_role",
+            "organization_id",
+            "weekday",
+            "daypart",
+            unique=True,
+            sqlite_where=text("role_label IS NULL"),
+            postgresql_where=text("role_label IS NULL"),
+        ),
+        Index(
+            "uq_coverage_target_org_weekday_daypart_role",
+            "organization_id",
+            "weekday",
+            "daypart",
+            "role_label",
+            unique=True,
+            sqlite_where=text("role_label IS NOT NULL"),
+            postgresql_where=text("role_label IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
