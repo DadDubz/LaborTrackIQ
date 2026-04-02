@@ -2209,15 +2209,19 @@ def quickbooks_callback(
     realmId: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    integration = db.scalar(
+    pending_integrations = db.scalars(
         select(IntegrationConnection).where(
             and_(
                 IntegrationConnection.provider == IntegrationProvider.QUICKBOOKS,
                 IntegrationConnection.status == IntegrationStatus.PENDING,
             )
         )
+    ).all()
+    integration = next(
+        (candidate for candidate in pending_integrations if (candidate.settings or {}).get("oauth_state") == state),
+        None,
     )
-    if not integration or (integration.settings or {}).get("oauth_state") != state:
+    if not integration:
         raise HTTPException(status_code=400, detail="QuickBooks OAuth state is invalid or expired.")
 
     try:

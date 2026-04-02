@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -21,7 +22,15 @@ from fastapi.testclient import TestClient
 from app.core.config import settings
 from app.db.session import Base, engine
 from app.main import app, ensure_schedule_shift_publish_columns, reset_rate_limit_state
-from app.models import EmployeeProfile
+from app.models import (
+    EmployeeProfile,
+    IntegrationConnection,
+    IntegrationProvider,
+    IntegrationStatus,
+    Organization,
+    User,
+    UserRole,
+)
 from app.security import create_access_token
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -670,6 +679,67 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         self.assertEqual(export.status_code, 200, export.text)
         summary = export.json()["export_summary"]
         self.assertEqual(summary["entries"], 1)
+
+    def test_quickbooks_callback_matches_pending_connection_by_state(self):
+        with Session(engine) as db:
+            org_one_integration = db.scalar(
+                select(IntegrationConnection).where(
+                    IntegrationConnection.organization_id == 1,
+                    IntegrationConnection.provider == IntegrationProvider.QUICKBOOKS,
+                )
+            )
+            self.assertIsNotNone(org_one_integration)
+            org_one_integration.status = IntegrationStatus.PENDING
+            org_one_integration.settings = {"oauth_state": "state-org-one"}
+            org_one_integration.credentials_ref = None
+            db.add(org_one_integration)
+
+            org_two = Organization(name="Demo Org Two", timezone="America/Chicago")
+            db.add(org_two)
+            db.flush()
+            db.add(
+                User(
+                    organization_id=org_two.id,
+                    full_name="Org Two Admin",
+                    email="org.two.admin@example.com",
+                    role=UserRole.ADMIN,
+                    password_hash="not-used-in-this-test",
+                )
+            )
+            org_two_integration = IntegrationConnection(
+                organization_id=org_two.id,
+                provider=IntegrationProvider.QUICKBOOKS,
+                status=IntegrationStatus.PENDING,
+                settings={"oauth_state": "state-org-two", "company_name": "Org Two Co"},
+            )
+            db.add(org_two_integration)
+            db.commit()
+            org_one_integration_id = org_one_integration.id
+            org_two_integration_id = org_two_integration.id
+            org_two_id = org_two.id
+
+        with patch(
+            "app.main.exchange_code_for_tokens",
+            return_value={
+                "access_token": "access-token",
+                "refresh_token": "refresh-token",
+                "expires_in": 3600,
+                "x_refresh_token_expires_in": 86400,
+            },
+        ):
+            callback = self.client.get(
+                "/api/integrations/quickbooks/callback",
+                params={"state": "state-org-two", "code": "demo-code", "realmId": "realm-two"},
+            )
+        self.assertEqual(callback.status_code, 200, callback.text)
+        self.assertEqual(callback.json()["integration"]["id"], org_two_integration_id)
+        self.assertEqual(callback.json()["integration"]["organization_id"], org_two_id)
+
+        with Session(engine) as db:
+            org_one_refreshed = db.get(IntegrationConnection, org_one_integration_id)
+            org_two_refreshed = db.get(IntegrationConnection, org_two_integration_id)
+            self.assertEqual(org_one_refreshed.status, IntegrationStatus.PENDING)
+            self.assertEqual(org_two_refreshed.status, IntegrationStatus.CONNECTED)
 
     def test_schedule_publish_and_unpublish_controls_employee_visibility(self):
         headers = self.admin_headers()
