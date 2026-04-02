@@ -1129,6 +1129,41 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         )
         self.assertEqual(second_approval.status_code, 400, second_approval.text)
 
+    def test_shift_delete_rejects_when_shift_change_requests_exist(self):
+        headers = self.admin_headers()
+        shift_day = date.today() + timedelta(days=6)
+        created_shift = self.client.post(
+            "/api/shifts",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "shift_date": shift_day.isoformat(),
+                "start_at": datetime.combine(shift_day, datetime.min.time()).replace(hour=9).isoformat() + "Z",
+                "end_at": datetime.combine(shift_day, datetime.min.time()).replace(hour=15).isoformat() + "Z",
+                "location_name": "Main Store",
+                "role_label": "Front Counter",
+            },
+        )
+        self.assertEqual(created_shift.status_code, 200, created_shift.text)
+        shift_id = created_shift.json()["id"]
+
+        created_request = self.client.post(
+            "/api/shift-change-requests",
+            headers=self.employee_headers(),
+            json={
+                "organization_id": 1,
+                "shift_id": shift_id,
+                "requester_employee_id": 3,
+                "request_type": "pickup",
+                "note": "Need coverage",
+            },
+        )
+        self.assertEqual(created_request.status_code, 200, created_request.text)
+
+        delete_attempt = self.client.delete(f"/api/shifts/{shift_id}", headers=headers)
+        self.assertEqual(delete_attempt.status_code, 400, delete_attempt.text)
+
     def test_bootstrap_can_be_disabled_for_non_local_environments(self):
         original_value = settings.allow_demo_bootstrap
         settings.allow_demo_bootstrap = False

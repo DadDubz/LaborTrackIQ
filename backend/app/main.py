@@ -1366,8 +1366,23 @@ def delete_shift(
     current_user: User = Depends(require_admin_user),
 ):
     shift = get_shift_for_admin(shift_id, current_user, db)
+    related_request = db.scalar(
+        select(ShiftChangeRequest.id).where(ShiftChangeRequest.shift_id == shift.id).limit(1)
+    )
+    if related_request is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Shift cannot be deleted while related shift-change requests exist. Archive or resolve requests first.",
+        )
     db.delete(shift)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Shift cannot be deleted while related shift-change requests exist. Archive or resolve requests first.",
+        )
     return {"message": "Shift deleted successfully."}
 
 
