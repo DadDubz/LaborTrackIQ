@@ -576,6 +576,29 @@ def validate_shift_window(shift_date: date, start_at: datetime, end_at: datetime
         raise HTTPException(status_code=400, detail="Shift start/end must match the selected shift date.")
 
 
+def validate_shift_overlap(
+    employee_id: int,
+    shift_date: date,
+    start_at: datetime,
+    end_at: datetime,
+    db: Session,
+    exclude_shift_id: Optional[int] = None,
+) -> None:
+    query = select(ScheduleShift).where(
+        and_(
+            ScheduleShift.employee_id == employee_id,
+            ScheduleShift.shift_date == shift_date,
+            ScheduleShift.start_at < end_at,
+            ScheduleShift.end_at > start_at,
+        )
+    )
+    if exclude_shift_id is not None:
+        query = query.where(ScheduleShift.id != exclude_shift_id)
+    overlapping_shift = db.scalar(query)
+    if overlapping_shift:
+        raise HTTPException(status_code=400, detail="This shift overlaps an existing shift for the employee.")
+
+
 def record_audit_event(
     organization_id: int,
     action: str,
@@ -968,6 +991,7 @@ def create_shift(
     validate_organization_access(payload.organization_id, current_user)
     validate_employee_target_for_admin(payload.employee_id, payload.organization_id, db)
     validate_shift_window(payload.shift_date, payload.start_at, payload.end_at)
+    validate_shift_overlap(payload.employee_id, payload.shift_date, payload.start_at, payload.end_at, db)
     shift = ScheduleShift(**payload.model_dump(), is_published=False, published_at=None, published_by_name=None)
     db.add(shift)
     db.commit()
@@ -998,6 +1022,7 @@ def update_shift(
     shift = get_shift_for_admin(shift_id, current_user, db)
     validate_employee_target_for_admin(payload.employee_id, shift.organization_id, db)
     validate_shift_window(payload.shift_date, payload.start_at, payload.end_at)
+    validate_shift_overlap(payload.employee_id, payload.shift_date, payload.start_at, payload.end_at, db, exclude_shift_id=shift.id)
     shift.employee_id = payload.employee_id
     shift.shift_date = payload.shift_date
     shift.start_at = payload.start_at

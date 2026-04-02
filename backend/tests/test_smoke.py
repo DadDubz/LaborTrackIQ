@@ -933,6 +933,87 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         self.assertEqual(after_unpublish.status_code, 200, after_unpublish.text)
         self.assertNotIn(shift_id, [shift["id"] for shift in after_unpublish.json()])
 
+    def test_shift_create_rejects_overlapping_employee_shift(self):
+        headers = self.admin_headers()
+        shift_day = date.today() + timedelta(days=4)
+        base_start = datetime.combine(shift_day, datetime.min.time()).replace(hour=9).isoformat() + "Z"
+        base_end = datetime.combine(shift_day, datetime.min.time()).replace(hour=13).isoformat() + "Z"
+        first_shift = self.client.post(
+            "/api/shifts",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "shift_date": shift_day.isoformat(),
+                "start_at": base_start,
+                "end_at": base_end,
+                "location_name": "Main Store",
+                "role_label": "Front Counter",
+            },
+        )
+        self.assertEqual(first_shift.status_code, 200, first_shift.text)
+
+        overlapping = self.client.post(
+            "/api/shifts",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "shift_date": shift_day.isoformat(),
+                "start_at": datetime.combine(shift_day, datetime.min.time()).replace(hour=12).isoformat() + "Z",
+                "end_at": datetime.combine(shift_day, datetime.min.time()).replace(hour=16).isoformat() + "Z",
+                "location_name": "Main Store",
+                "role_label": "Lunch",
+            },
+        )
+        self.assertEqual(overlapping.status_code, 400, overlapping.text)
+
+    def test_shift_update_rejects_overlapping_employee_shift(self):
+        headers = self.admin_headers()
+        shift_day = date.today() + timedelta(days=5)
+        first_shift = self.client.post(
+            "/api/shifts",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "shift_date": shift_day.isoformat(),
+                "start_at": datetime.combine(shift_day, datetime.min.time()).replace(hour=8).isoformat() + "Z",
+                "end_at": datetime.combine(shift_day, datetime.min.time()).replace(hour=12).isoformat() + "Z",
+                "location_name": "Main Store",
+                "role_label": "Morning",
+            },
+        )
+        self.assertEqual(first_shift.status_code, 200, first_shift.text)
+        second_shift = self.client.post(
+            "/api/shifts",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "shift_date": shift_day.isoformat(),
+                "start_at": datetime.combine(shift_day, datetime.min.time()).replace(hour=13).isoformat() + "Z",
+                "end_at": datetime.combine(shift_day, datetime.min.time()).replace(hour=17).isoformat() + "Z",
+                "location_name": "Main Store",
+                "role_label": "Afternoon",
+            },
+        )
+        self.assertEqual(second_shift.status_code, 200, second_shift.text)
+
+        conflicting_update = self.client.put(
+            f"/api/shifts/{second_shift.json()['id']}",
+            headers=headers,
+            json={
+                "employee_id": 3,
+                "shift_date": shift_day.isoformat(),
+                "start_at": datetime.combine(shift_day, datetime.min.time()).replace(hour=11).isoformat() + "Z",
+                "end_at": datetime.combine(shift_day, datetime.min.time()).replace(hour=15).isoformat() + "Z",
+                "location_name": "Main Store",
+                "role_label": "Conflict",
+            },
+        )
+        self.assertEqual(conflicting_update.status_code, 400, conflicting_update.text)
+
     def test_shift_change_approval_enforces_pending_and_replacement_rules(self):
         headers = self.admin_headers()
 
