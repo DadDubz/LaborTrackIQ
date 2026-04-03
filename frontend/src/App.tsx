@@ -1055,6 +1055,11 @@ export default function App() {
     if (!employeePortal || !shiftChangeForm.shift_id) {
       return;
     }
+    const trimmedNote = shiftChangeForm.note.trim();
+    if (!trimmedNote) {
+      setEmployeeError("Please add a short note so your manager knows what changed.");
+      return;
+    }
     setEmployeeError("");
     try {
       await employeeApiFetch(
@@ -1066,7 +1071,7 @@ export default function App() {
             shift_id: Number(shiftChangeForm.shift_id),
             requester_employee_id: employeePortal.employee_id,
             request_type: shiftChangeForm.request_type,
-            note: shiftChangeForm.note,
+            note: trimmedNote,
           }),
         },
       );
@@ -2343,7 +2348,11 @@ export default function App() {
                     value={shiftChangeForm.note}
                     onChange={(event) => setShiftChangeForm({ ...shiftChangeForm, note: event.target.value })}
                   />
-                  <button className="primary-button" type="submit">
+                  <button
+                    className="primary-button"
+                    type="submit"
+                    disabled={!shiftChangeForm.shift_id || !shiftChangeForm.note.trim()}
+                  >
                     Submit Shift Change
                   </button>
                 </form>

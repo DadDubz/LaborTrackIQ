@@ -1186,6 +1186,50 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         delete_attempt = self.client.delete(f"/api/shifts/{shift_id}", headers=headers)
         self.assertEqual(delete_attempt.status_code, 400, delete_attempt.text)
 
+    def test_shift_change_request_accepts_missing_requester_employee_id_and_rejects_blank_note(self):
+        headers = self.admin_headers()
+        shift_day = date.today() + timedelta(days=5)
+        created_shift = self.client.post(
+            "/api/shifts",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "shift_date": shift_day.isoformat(),
+                "start_at": datetime.combine(shift_day, datetime.min.time()).replace(hour=12).isoformat() + "Z",
+                "end_at": datetime.combine(shift_day, datetime.min.time()).replace(hour=18).isoformat() + "Z",
+                "location_name": "Main Store",
+                "role_label": "Front Counter",
+            },
+        )
+        self.assertEqual(created_shift.status_code, 200, created_shift.text)
+        shift_id = created_shift.json()["id"]
+
+        missing_requester_id = self.client.post(
+            "/api/shift-change-requests",
+            headers=self.employee_headers(),
+            json={
+                "organization_id": 1,
+                "shift_id": shift_id,
+                "request_type": "swap",
+                "note": "Need to swap due to appointment",
+            },
+        )
+        self.assertEqual(missing_requester_id.status_code, 200, missing_requester_id.text)
+        self.assertEqual(missing_requester_id.json()["requester_employee_id"], 3)
+
+        blank_note = self.client.post(
+            "/api/shift-change-requests",
+            headers=self.employee_headers(),
+            json={
+                "organization_id": 1,
+                "shift_id": shift_id,
+                "request_type": "swap",
+                "note": "   ",
+            },
+        )
+        self.assertEqual(blank_note.status_code, 400, blank_note.text)
+
     def test_bootstrap_can_be_disabled_for_non_local_environments(self):
         original_value = settings.allow_demo_bootstrap
         settings.allow_demo_bootstrap = False

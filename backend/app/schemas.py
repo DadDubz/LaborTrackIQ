@@ -196,7 +196,7 @@ class AvailabilityRequestUpdate(BaseModel):
 class ShiftChangeRequestCreate(BaseModel):
     organization_id: int
     shift_id: int
-    requester_employee_id: int
+    requester_employee_id: Optional[int] = None
     request_type: ShiftChangeType
     note: str
 

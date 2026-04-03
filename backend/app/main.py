@@ -1579,19 +1579,25 @@ def create_shift_change_request(
     x_employee_number: Optional[str] = Header(default=None),
     x_employee_pin: Optional[str] = Header(default=None),
 ):
-    employee = get_authenticated_employee_for_self_service(payload.requester_employee_id, x_employee_number, x_employee_pin, db)
+    shift = db.get(ScheduleShift, payload.shift_id)
+    requester_employee_id = payload.requester_employee_id if payload.requester_employee_id is not None else shift.employee_id if shift else None
+    if requester_employee_id is None:
+        raise HTTPException(status_code=400, detail="requester_employee_id is required.")
+    employee = get_authenticated_employee_for_self_service(requester_employee_id, x_employee_number, x_employee_pin, db)
     if employee.organization_id != payload.organization_id:
         raise HTTPException(status_code=403, detail="Cross-organization access is not allowed.")
-    shift = db.get(ScheduleShift, payload.shift_id)
     if not shift or shift.organization_id != payload.organization_id or shift.employee_id != employee.id:
         raise HTTPException(status_code=404, detail="Shift not found for this employee.")
     if shift.shift_date < date.today():
         raise HTTPException(status_code=400, detail="Only upcoming shifts can be changed.")
+    note = payload.note.strip()
+    if not note:
+        raise HTTPException(status_code=400, detail="A request note is required.")
     existing_pending = db.scalar(
         select(ShiftChangeRequest).where(
             and_(
                 ShiftChangeRequest.shift_id == payload.shift_id,
-                ShiftChangeRequest.requester_employee_id == payload.requester_employee_id,
+                ShiftChangeRequest.requester_employee_id == requester_employee_id,
                 ShiftChangeRequest.status == ShiftChangeStatus.PENDING,
             )
         )
@@ -1599,7 +1605,13 @@ def create_shift_change_request(
     if existing_pending:
         raise HTTPException(status_code=400, detail="A pending shift change request already exists for this shift.")
 
-    request = ShiftChangeRequest(**payload.model_dump())
+    request = ShiftChangeRequest(
+        organization_id=payload.organization_id,
+        shift_id=payload.shift_id,
+        requester_employee_id=requester_employee_id,
+        request_type=payload.request_type,
+        note=note,
+    )
     db.add(request)
     try:
         db.commit()
