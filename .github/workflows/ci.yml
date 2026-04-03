@@ -25,9 +25,9 @@ jobs:
 
       - name: Verify migrations can upgrade and downgrade
         run: |
-          PYTHONPATH=backend alembic -c backend/alembic.ini upgrade head
-          PYTHONPATH=backend alembic -c backend/alembic.ini downgrade base
-          PYTHONPATH=backend alembic -c backend/alembic.ini upgrade head
+          PYTHONPATH=backend python -m alembic -c backend/alembic.ini upgrade head
+          PYTHONPATH=backend python -m alembic -c backend/alembic.ini downgrade base
+          PYTHONPATH=backend python -m alembic -c backend/alembic.ini upgrade head
 
       - name: Run backend smoke tests
         run: python -m unittest discover -s backend/tests -p "test_*.py"
