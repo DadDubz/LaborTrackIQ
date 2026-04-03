@@ -37,6 +37,22 @@ def run_preflight(strict: bool = False) -> int:
     elif _is_sqlite_database():
         warnings.append("Using SQLite database URL for this environment.")
 
+    numeric_settings = [
+        ("MAX_REQUEST_BYTES", settings.max_request_bytes),
+        ("AUTH_RATE_LIMIT", settings.auth_rate_limit),
+        ("AUTH_RATE_WINDOW_SECONDS", settings.auth_rate_window_seconds),
+        ("AUTH_ACCOUNT_RATE_LIMIT", settings.auth_account_rate_limit),
+        ("AUTH_ACCOUNT_RATE_WINDOW_SECONDS", settings.auth_account_rate_window_seconds),
+        ("CLOCK_RATE_LIMIT", settings.clock_rate_limit),
+        ("CLOCK_RATE_WINDOW_SECONDS", settings.clock_rate_window_seconds),
+        ("CLOCK_EMPLOYEE_RATE_LIMIT", settings.clock_employee_rate_limit),
+        ("CLOCK_EMPLOYEE_RATE_WINDOW_SECONDS", settings.clock_employee_rate_window_seconds),
+        ("QUICKBOOKS_OAUTH_STATE_TTL_SECONDS", settings.quickbooks_oauth_state_ttl_seconds),
+    ]
+    for key, value in numeric_settings:
+        if value <= 0:
+            failures.append(f"{key} must be greater than 0.")
+
     if failures:
         print("Preflight check failed:")
         for item in failures:
