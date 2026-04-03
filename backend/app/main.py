@@ -994,6 +994,16 @@ def create_shift(
     validate_shift_overlap(payload.employee_id, payload.shift_date, payload.start_at, payload.end_at, db)
     shift = ScheduleShift(**payload.model_dump(), is_published=False, published_at=None, published_by_name=None)
     db.add(shift)
+    db.flush()
+    record_audit_event(
+        organization_id=payload.organization_id,
+        actor_user_id=current_user.id,
+        action="shift_created",
+        entity_type="shift",
+        entity_id=shift.id,
+        detail=f"employee_id={shift.employee_id}",
+        db=db,
+    )
     db.commit()
     db.refresh(shift)
     return shift
@@ -1030,6 +1040,15 @@ def update_shift(
     shift.location_name = payload.location_name
     shift.role_label = payload.role_label
     shift.is_published = False
+    record_audit_event(
+        organization_id=shift.organization_id,
+        actor_user_id=current_user.id,
+        action="shift_updated",
+        entity_type="shift",
+        entity_id=shift.id,
+        detail=f"employee_id={shift.employee_id}",
+        db=db,
+    )
     db.commit()
     db.refresh(shift)
     return shift
@@ -1375,6 +1394,15 @@ def delete_shift(
             detail="Shift cannot be deleted while related shift-change requests exist. Archive or resolve requests first.",
         )
     db.delete(shift)
+    record_audit_event(
+        organization_id=shift.organization_id,
+        actor_user_id=current_user.id,
+        action="shift_deleted",
+        entity_type="shift",
+        entity_id=shift.id,
+        detail=f"employee_id={shift.employee_id}",
+        db=db,
+    )
     try:
         db.commit()
     except IntegrityError:
@@ -1764,14 +1792,27 @@ def upsert_coverage_target(
         return db.scalar(select(ScheduleCoverageTarget).where(and_(*target_filters)))
 
     target = find_target()
+    audit_action = "coverage_target_updated"
     if target:
         target.required_headcount = payload.required_headcount
         target.role_label = normalized_role
     else:
+        audit_action = "coverage_target_created"
         target_data = payload.model_dump()
         target_data["role_label"] = normalized_role
         target = ScheduleCoverageTarget(**target_data)
         db.add(target)
+        db.flush()
+
+    record_audit_event(
+        organization_id=payload.organization_id,
+        actor_user_id=current_user.id,
+        action=audit_action,
+        entity_type="coverage_target",
+        entity_id=target.id,
+        detail=f"weekday={target.weekday},daypart={target.daypart.value}",
+        db=db,
+    )
 
     try:
         db.commit()
@@ -1782,6 +1823,15 @@ def upsert_coverage_target(
             raise
         target.required_headcount = payload.required_headcount
         target.role_label = normalized_role
+        record_audit_event(
+            organization_id=payload.organization_id,
+            actor_user_id=current_user.id,
+            action="coverage_target_updated",
+            entity_type="coverage_target",
+            entity_id=target.id,
+            detail=f"weekday={target.weekday},daypart={target.daypart.value}",
+            db=db,
+        )
         db.commit()
     db.refresh(target)
     return target
@@ -1859,6 +1909,16 @@ def create_note(
     validate_optional_employee_target_for_admin(payload.employee_id, payload.organization_id, db)
     note = ManagerNote(**payload.model_dump())
     db.add(note)
+    db.flush()
+    record_audit_event(
+        organization_id=payload.organization_id,
+        actor_user_id=current_user.id,
+        action="note_created",
+        entity_type="note",
+        entity_id=note.id,
+        detail=f"employee_id={note.employee_id}",
+        db=db,
+    )
     db.commit()
     db.refresh(note)
     return note
@@ -1891,6 +1951,15 @@ def update_note(
     note.body = payload.body
     note.is_active = payload.is_active
     note.show_at_clock_in = payload.show_at_clock_in
+    record_audit_event(
+        organization_id=note.organization_id,
+        actor_user_id=current_user.id,
+        action="note_updated",
+        entity_type="note",
+        entity_id=note.id,
+        detail=f"is_active={note.is_active}",
+        db=db,
+    )
     db.commit()
     db.refresh(note)
     return note
@@ -1903,6 +1972,15 @@ def delete_note(
     current_user: User = Depends(require_admin_user),
 ):
     note = get_note_for_admin(note_id, current_user, db)
+    record_audit_event(
+        organization_id=note.organization_id,
+        actor_user_id=current_user.id,
+        action="note_deleted",
+        entity_type="note",
+        entity_id=note.id,
+        detail=f"title={note.title}",
+        db=db,
+    )
     db.delete(note)
     db.commit()
     return {"message": "Note deleted successfully."}
@@ -2070,6 +2148,15 @@ def create_report_recipient(
         raise HTTPException(status_code=400, detail="That report recipient already exists for this report.")
     if existing:
         existing.is_active = True
+        record_audit_event(
+            organization_id=payload.organization_id,
+            actor_user_id=current_user.id,
+            action="report_recipient_restored",
+            entity_type="report_recipient",
+            entity_id=existing.id,
+            detail=f"report_type={existing.report_type}",
+            db=db,
+        )
         db.commit()
         db.refresh(existing)
         return {"id": existing.id, "message": "Report recipient restored."}
@@ -2080,6 +2167,16 @@ def create_report_recipient(
         report_type=normalized_report_type,
     )
     db.add(recipient)
+    db.flush()
+    record_audit_event(
+        organization_id=payload.organization_id,
+        actor_user_id=current_user.id,
+        action="report_recipient_created",
+        entity_type="report_recipient",
+        entity_id=recipient.id,
+        detail=f"report_type={recipient.report_type}",
+        db=db,
+    )
     try:
         db.commit()
     except IntegrityError:
@@ -2097,6 +2194,15 @@ def create_report_recipient(
             if existing.is_active:
                 raise HTTPException(status_code=400, detail="That report recipient already exists for this report.")
             existing.is_active = True
+            record_audit_event(
+                organization_id=payload.organization_id,
+                actor_user_id=current_user.id,
+                action="report_recipient_restored",
+                entity_type="report_recipient",
+                entity_id=existing.id,
+                detail=f"report_type={existing.report_type}",
+                db=db,
+            )
             db.commit()
             db.refresh(existing)
             return {"id": existing.id, "message": "Report recipient restored."}
@@ -2131,6 +2237,15 @@ def delete_report_recipient(
         raise HTTPException(status_code=404, detail="Report recipient not found.")
     validate_organization_access(recipient.organization_id, current_user)
     recipient.is_active = False
+    record_audit_event(
+        organization_id=recipient.organization_id,
+        actor_user_id=current_user.id,
+        action="report_recipient_archived",
+        entity_type="report_recipient",
+        entity_id=recipient.id,
+        detail=f"report_type={recipient.report_type}",
+        db=db,
+    )
     db.commit()
     return {"message": "Report recipient archived."}
 

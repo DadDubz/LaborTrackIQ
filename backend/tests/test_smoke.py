@@ -529,6 +529,28 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         matching = [event for event in events.json() if event["action"] == "user_created" and event["entity_id"] == created_user_id]
         self.assertTrue(matching)
 
+    def test_admin_audit_events_capture_note_creation(self):
+        headers = self.admin_headers()
+        created = self.client.post(
+            "/api/notes",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": None,
+                "title": "Audit Note",
+                "body": "Testing note audit event",
+                "is_active": True,
+                "show_at_clock_in": True,
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        created_note_id = created.json()["id"]
+
+        events = self.client.get("/api/organizations/1/audit-events", headers=headers)
+        self.assertEqual(events.status_code, 200, events.text)
+        matching = [event for event in events.json() if event["action"] == "note_created" and event["entity_id"] == created_note_id]
+        self.assertTrue(matching)
+
     def test_employee_pin_is_not_stored_plaintext(self):
         with Session(engine) as db:
             profile = db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_number == "1001"))
