@@ -1580,13 +1580,13 @@ def create_shift_change_request(
     x_employee_pin: Optional[str] = Header(default=None),
 ):
     shift = db.get(ScheduleShift, payload.shift_id)
-    requester_employee_id = payload.requester_employee_id if payload.requester_employee_id is not None else shift.employee_id if shift else None
-    if requester_employee_id is None:
-        raise HTTPException(status_code=400, detail="requester_employee_id is required.")
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found for this employee.")
+    requester_employee_id = payload.requester_employee_id if payload.requester_employee_id is not None else shift.employee_id
     employee = get_authenticated_employee_for_self_service(requester_employee_id, x_employee_number, x_employee_pin, db)
     if employee.organization_id != payload.organization_id:
         raise HTTPException(status_code=403, detail="Cross-organization access is not allowed.")
-    if not shift or shift.organization_id != payload.organization_id or shift.employee_id != employee.id:
+    if shift.organization_id != payload.organization_id or shift.employee_id != employee.id:
         raise HTTPException(status_code=404, detail="Shift not found for this employee.")
     if shift.shift_date < date.today():
         raise HTTPException(status_code=400, detail="Only upcoming shifts can be changed.")
