@@ -1082,7 +1082,12 @@ export default function App() {
 
   async function handleShiftChangeSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!employeePortal || !shiftChangeForm.shift_id) {
+    if (!employeePortal) {
+      setEmployeeError("Please sign in with your employee number and PIN.");
+      return;
+    }
+    if (!shiftChangeForm.shift_id) {
+      setEmployeeError("Please choose one of your shifts first.");
       return;
     }
     const trimmedNote = shiftChangeForm.note.trim();
