@@ -1230,6 +1230,19 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         )
         self.assertEqual(blank_note.status_code, 400, blank_note.text)
 
+    def test_shift_change_request_without_requester_returns_404_when_shift_missing(self):
+        missing_shift = self.client.post(
+            "/api/shift-change-requests",
+            headers=self.employee_headers(),
+            json={
+                "organization_id": 1,
+                "shift_id": 999999,
+                "request_type": "swap",
+                "note": "Need a swap",
+            },
+        )
+        self.assertEqual(missing_shift.status_code, 404, missing_shift.text)
+
     def test_bootstrap_can_be_disabled_for_non_local_environments(self):
         original_value = settings.allow_demo_bootstrap
         settings.allow_demo_bootstrap = False
