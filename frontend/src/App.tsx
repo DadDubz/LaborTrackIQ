@@ -375,6 +375,39 @@ function parseJsonSafe(raw: string): unknown {
   }
 }
 
+function parseApiErrorDetail(data: unknown, fallback: string): string {
+  if (!data || typeof data !== "object" || !("detail" in data)) {
+    return fallback;
+  }
+  const detail = (data as { detail: unknown }).detail;
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0];
+    if (first && typeof first === "object") {
+      const message = "msg" in first && typeof (first as { msg?: unknown }).msg === "string"
+        ? (first as { msg: string }).msg
+        : null;
+      const location = Array.isArray((first as { loc?: unknown }).loc)
+        ? (first as { loc: unknown[] }).loc
+            .filter((part): part is string | number => typeof part === "string" || typeof part === "number")
+            .join(".")
+        : "";
+      if (message && location) {
+        return `${location}: ${message}`;
+      }
+      if (message) {
+        return message;
+      }
+    }
+  }
+  if (detail && typeof detail === "object" && "message" in detail && typeof (detail as { message?: unknown }).message === "string") {
+    return (detail as { message: string }).message;
+  }
+  return fallback;
+}
+
 function readStoredAdminUser(raw: string | null): User | null {
   if (!raw) {
     return null;
@@ -614,10 +647,7 @@ export default function App() {
         window.localStorage.removeItem("labortrackiq_token");
         window.localStorage.removeItem("labortrackiq_user");
       }
-      if (data && typeof data === "object" && "detail" in data && typeof (data as { detail?: unknown }).detail === "string") {
-        throw new Error((data as { detail: string }).detail);
-      }
-      throw new Error(raw || "Request failed.");
+      throw new Error(parseApiErrorDetail(data, raw || "Request failed."));
     }
     return (data ?? {}) as T;
   }
