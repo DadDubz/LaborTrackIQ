@@ -52,11 +52,36 @@ docs/
 1. Copy `.env.example` to `.env`
 2. Set `APP_ENVIRONMENT`, `SECRET_KEY`, `CORS_ORIGINS`, `TRUST_PROXY_HEADERS`, and rate-limit settings (`AUTH_RATE_LIMIT`, `AUTH_ACCOUNT_RATE_LIMIT`, `CLOCK_RATE_LIMIT`, `CLOCK_EMPLOYEE_RATE_LIMIT`) for your environment, set `ALLOW_DEMO_BOOTSTRAP=false` outside local development, and keep `MAX_REQUEST_BYTES` at a safe limit
 3. Add your QuickBooks OAuth credentials when you are ready to test live QuickBooks auth
-4. Install backend requirements with `.venv/bin/pip install -r backend/requirements.txt`
+4. Install backend requirements with `make backend-install`
 5. Copy `frontend/.env.example` to `frontend/.env` and set `VITE_API_BASE_URL` for your environment (`VITE_ENABLE_DEMO_BOOTSTRAP` should stay `false` outside local demos)
-6. Install frontend packages with `npm install` in `frontend/`
-7. Start the API with `../.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000` from `backend/`
+6. Install frontend packages with `make frontend-install`
+7. Start the API with `../.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload` from `backend/`
 8. Start the frontend with `npm run dev -- --host 127.0.0.1 --port 5173` from `frontend/`
+
+### Codespaces Quick Start
+
+Run these from the repo root (`/workspaces/LaborTrackIQ`):
+
+```bash
+make backend-install
+make frontend-install
+```
+
+Terminal 1:
+
+```bash
+cd backend
+../.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Terminal 2:
+
+```bash
+cd frontend
+npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+Then open the forwarded frontend port in Codespaces and use that URL in your browser.
 
 QuickBooks setup details live in `docs/quickbooks-setup.md`.
 Deployment guidance lives in `docs/deployment-runbook.md`.
@@ -67,14 +92,14 @@ Alembic is configured under `backend/alembic/`.
 
 ```bash
 cd backend
-../.venv/bin/alembic -c alembic.ini upgrade head
+../.venv/bin/python -m alembic -c alembic.ini upgrade head
 ```
 
 For existing environments that already have tables, run:
 
 ```bash
 cd backend
-../.venv/bin/alembic -c alembic.ini stamp head
+../.venv/bin/python -m alembic -c alembic.ini stamp head
 ```
 
 Rollback one migration:
