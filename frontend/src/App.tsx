@@ -242,6 +242,7 @@ type AdminTab = "setup" | "employees" | "schedules" | "notes" | "requests" | "ti
 type EmployeeTab = "home" | "schedule" | "request_off" | "availability" | "shift_changes" | "profile";
 type KeypadField = "employee" | "pin";
 type RequestQueueTab = "pending" | "approved";
+type EmployeeRequestQueueTab = "pending" | "approved";
 type RequestBoardTab = "time_off" | "shift_changes";
 
 const DEMO_BOOTSTRAP_ENABLED =
@@ -541,6 +542,7 @@ export default function App() {
     manager_response: "",
   });
   const [requestQueueTab, setRequestQueueTab] = useState<RequestQueueTab>("pending");
+  const [employeeRequestQueueTab, setEmployeeRequestQueueTab] = useState<EmployeeRequestQueueTab>("pending");
   const [reportRecipientForm, setReportRecipientForm] = useState({
     email: "",
     report_type: "daily_labor_summary",
@@ -1917,6 +1919,9 @@ export default function App() {
   const pendingTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "pending");
   const approvedTimeOffRequests = orgTimeOffRequests.filter((request) => request.status === "approved");
   const visibleTimeOffRequests = requestQueueTab === "pending" ? pendingTimeOffRequests : approvedTimeOffRequests;
+  const pendingEmployeeRequests = employeeRequests.filter((request) => request.status === "pending");
+  const approvedEmployeeRequests = employeeRequests.filter((request) => request.status === "approved");
+  const visibleEmployeeRequests = employeeRequestQueueTab === "pending" ? pendingEmployeeRequests : approvedEmployeeRequests;
   const pendingShiftChangeRequests = orgShiftChangeRequests.filter((request) => request.status === "pending");
   const approvedShiftChangeRequests = orgShiftChangeRequests.filter((request) => request.status === "approved");
   const visibleShiftChangeRequests = requestQueueTab === "pending" ? pendingShiftChangeRequests : approvedShiftChangeRequests;
@@ -2252,8 +2257,20 @@ export default function App() {
                 </form>
 
                 <div className="scroll-list">
-                  {employeeRequests.length > 0 ? (
-                    employeeRequests.map((request) => (
+                  <div className="tab-row">
+                    {(["pending", "approved"] as EmployeeRequestQueueTab[]).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        className={tab === employeeRequestQueueTab ? "active-tab-button" : "ghost-button"}
+                        onClick={() => setEmployeeRequestQueueTab(tab)}
+                      >
+                        {tab === "pending" ? `Pending (${pendingEmployeeRequests.length})` : `Approved (${approvedEmployeeRequests.length})`}
+                      </button>
+                    ))}
+                  </div>
+                  {visibleEmployeeRequests.length > 0 ? (
+                    visibleEmployeeRequests.map((request) => (
                       <div className="entity-card" key={request.id}>
                         <strong>
                           {formatDate(request.start_date)} to {formatDate(request.end_date)}
@@ -2264,7 +2281,9 @@ export default function App() {
                       </div>
                     ))
                   ) : (
-                    <div className="empty-state">No request-off submissions yet.</div>
+                    <div className="empty-state">
+                      {employeeRequestQueueTab === "pending" ? "No pending request-off submissions." : "No approved request-off submissions yet."}
+                    </div>
                   )}
                 </div>
               </div>
