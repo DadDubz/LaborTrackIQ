@@ -27,13 +27,13 @@ class OrganizationCreate(BaseModel):
 
 class UserCreate(BaseModel):
     organization_id: int
-    full_name: str
+    full_name: str = Field(min_length=1, max_length=255)
     email: Optional[EmailStr] = None
     role: UserRole
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     employee_number: Optional[str] = Field(default=None, min_length=1, max_length=32, pattern=r"^[A-Za-z0-9-]+$")
     pin_code: Optional[str] = Field(default=None, min_length=4, max_length=12, pattern=r"^\d{4,12}$")
-    job_title: Optional[str] = None
+    job_title: Optional[str] = Field(default=None, max_length=120)
 
 
 class UserRead(BaseModel):
@@ -50,12 +50,12 @@ class UserRead(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    full_name: str
+    full_name: str = Field(min_length=1, max_length=255)
     email: Optional[EmailStr] = None
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     employee_number: Optional[str] = Field(default=None, min_length=1, max_length=32, pattern=r"^[A-Za-z0-9-]+$")
     pin_code: Optional[str] = Field(default=None, min_length=4, max_length=12, pattern=r"^\d{4,12}$")
-    job_title: Optional[str] = None
+    job_title: Optional[str] = Field(default=None, max_length=120)
     is_active: bool = True
 
 
