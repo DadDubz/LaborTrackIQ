@@ -1243,6 +1243,21 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         )
         self.assertEqual(missing_shift.status_code, 404, missing_shift.text)
 
+    def test_time_off_request_rejects_blank_reason(self):
+        shift_day = date.today() + timedelta(days=2)
+        response = self.client.post(
+            "/api/time-off-requests",
+            headers=self.employee_headers(),
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "start_date": shift_day.isoformat(),
+                "end_date": shift_day.isoformat(),
+                "reason": "   ",
+            },
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+
     def test_bootstrap_can_be_disabled_for_non_local_environments(self):
         original_value = settings.allow_demo_bootstrap
         settings.allow_demo_bootstrap = False

@@ -1861,12 +1861,15 @@ def create_time_off_request(
         raise HTTPException(status_code=403, detail="Cross-organization access is not allowed.")
     if payload.end_date < payload.start_date:
         raise HTTPException(status_code=400, detail="end_date must be on or after start_date.")
+    reason = payload.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="A request reason is required.")
     request = TimeOffRequest(
         organization_id=payload.organization_id,
         employee_id=employee.id,
         start_date=payload.start_date,
         end_date=payload.end_date,
-        reason=payload.reason,
+        reason=reason,
     )
     db.add(request)
     db.commit()

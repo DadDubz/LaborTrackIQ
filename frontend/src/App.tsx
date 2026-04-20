@@ -969,6 +969,12 @@ export default function App() {
   async function handleRequestOffSubmit(event: FormEvent) {
     event.preventDefault();
     if (!employeePortal) {
+      setEmployeeError("Please sign in with your employee number and PIN.");
+      return;
+    }
+    const trimmedReason = requestOffForm.reason.trim();
+    if (!trimmedReason) {
+      setEmployeeError("Please add a reason for your request off.");
       return;
     }
     setEmployeeError("");
@@ -982,7 +988,7 @@ export default function App() {
             employee_id: employeePortal.employee_id,
             start_date: requestOffForm.start_date,
             end_date: requestOffForm.end_date,
-            reason: requestOffForm.reason,
+            reason: trimmedReason,
           }),
         },
       );
@@ -2251,7 +2257,11 @@ export default function App() {
                     value={requestOffForm.reason}
                     onChange={(event) => setRequestOffForm({ ...requestOffForm, reason: event.target.value })}
                   />
-                  <button className="primary-button" type="submit">
+                  <button
+                    className="primary-button"
+                    type="submit"
+                    disabled={!requestOffForm.reason.trim()}
+                  >
                     Submit Request
                   </button>
                 </form>
