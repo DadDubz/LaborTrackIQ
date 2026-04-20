@@ -474,6 +474,41 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         )
         self.assertEqual(short_password.status_code, 422, short_password.text)
 
+    def test_user_creation_rejects_blank_full_name(self):
+        headers = self.admin_headers()
+        blank_name = self.client.post(
+            "/api/users",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "full_name": "   ",
+                "email": "blank.name.employee@demodiner.com",
+                "role": "employee",
+                "employee_number": "1042",
+                "pin_code": "1234",
+                "job_title": "Cashier",
+            },
+        )
+        self.assertEqual(blank_name.status_code, 400, blank_name.text)
+
+    def test_user_creation_trims_full_name(self):
+        headers = self.admin_headers()
+        trimmed_name = self.client.post(
+            "/api/users",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "full_name": "  Trimmed Name  ",
+                "email": "trimmed.name.employee@demodiner.com",
+                "role": "employee",
+                "employee_number": "1043",
+                "pin_code": "1234",
+                "job_title": "Cashier",
+            },
+        )
+        self.assertEqual(trimmed_name.status_code, 200, trimmed_name.text)
+        self.assertEqual(trimmed_name.json()["full_name"], "Trimmed Name")
+
     def test_availability_request_time_format_validation(self):
         invalid_time = self.client.post(
             "/api/availability-requests",

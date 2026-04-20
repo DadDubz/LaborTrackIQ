@@ -859,13 +859,16 @@ def create_user(
     current_user: User = Depends(require_admin_user),
 ):
     validate_organization_access(payload.organization_id, current_user)
+    full_name = payload.full_name.strip()
+    if not full_name:
+        raise HTTPException(status_code=400, detail="full_name is required.")
     if payload.role != UserRole.EMPLOYEE and not payload.password:
         raise HTTPException(status_code=400, detail="Non-employee users require a password.")
     normalized_email = ensure_unique_user_email(payload.organization_id, payload.email, db)
 
     user = User(
         organization_id=payload.organization_id,
-        full_name=payload.full_name,
+        full_name=full_name,
         email=normalized_email,
         role=payload.role,
         password_hash=hash_password(payload.password) if payload.password else None,
@@ -925,7 +928,10 @@ def update_user(
     current_user: User = Depends(require_admin_user),
 ):
     user = get_user_for_admin(user_id, current_user, db)
-    user.full_name = payload.full_name
+    full_name = payload.full_name.strip()
+    if not full_name:
+        raise HTTPException(status_code=400, detail="full_name is required.")
+    user.full_name = full_name
     user.email = ensure_unique_user_email(user.organization_id, payload.email, db, exclude_user_id=user.id)
     user.is_active = payload.is_active
 
