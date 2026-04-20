@@ -1318,16 +1318,32 @@ export default function App() {
   async function handleSubmitShift(event: FormEvent) {
     event.preventDefault();
     setAdminError("");
-    const payload = {
-      organization_id: Number(organizationId),
-      employee_id: Number(shiftForm.employee_id),
-      shift_date: shiftForm.shift_date,
-      start_at: toIsoDateTime(shiftForm.shift_date, shiftForm.start_time),
-      end_at: toIsoDateTime(shiftForm.shift_date, shiftForm.end_time),
-      location_name: shiftForm.location_name || null,
-      role_label: shiftForm.role_label || null,
-    };
+    if (!shiftForm.employee_id) {
+      setAdminError("Please select an employee before saving a shift.");
+      return;
+    }
+    if (!shiftForm.shift_date) {
+      setAdminError("Please select a shift date.");
+      return;
+    }
+    if (!shiftForm.start_time || !shiftForm.end_time) {
+      setAdminError("Please provide both a start time and end time.");
+      return;
+    }
+    if (shiftForm.end_time <= shiftForm.start_time) {
+      setAdminError("Shift end time must be after the start time.");
+      return;
+    }
     try {
+      const payload = {
+        organization_id: Number(organizationId),
+        employee_id: Number(shiftForm.employee_id),
+        shift_date: shiftForm.shift_date,
+        start_at: toIsoDateTime(shiftForm.shift_date, shiftForm.start_time),
+        end_at: toIsoDateTime(shiftForm.shift_date, shiftForm.end_time),
+        location_name: shiftForm.location_name.trim() || null,
+        role_label: shiftForm.role_label.trim() || null,
+      };
       if (shiftForm.id) {
         await apiFetch(`/shifts/${shiftForm.id}`, {
           method: "PUT",
@@ -1387,26 +1403,29 @@ export default function App() {
     }
 
     setAdminError("");
-    for (const shift of previousWeekShifts) {
-      const daysFromPreviousWeek =
-        Math.round(
-          (new Date(`${shift.shift_date}T00:00:00`).getTime() - new Date(`${previousWeekStart}T00:00:00`).getTime()) / 86400000,
-        ) || 0;
-      await apiFetch("/shifts", {
-        method: "POST",
-        body: JSON.stringify({
-          organization_id: Number(organizationId),
-          employee_id: shift.employee_id,
-          shift_date: addDays(scheduleWeekStart, daysFromPreviousWeek),
-          start_at: toIsoDateTime(addDays(scheduleWeekStart, daysFromPreviousWeek), splitIsoDateTime(shift.start_at).time),
-          end_at: toIsoDateTime(addDays(scheduleWeekStart, daysFromPreviousWeek), splitIsoDateTime(shift.end_at).time),
-          location_name: shift.location_name,
-          role_label: shift.role_label,
-        }),
-      });
+    try {
+      for (const shift of previousWeekShifts) {
+        const daysFromPreviousWeek =
+          Math.round(
+            (new Date(`${shift.shift_date}T00:00:00`).getTime() - new Date(`${previousWeekStart}T00:00:00`).getTime()) / 86400000,
+          ) || 0;
+        await apiFetch("/shifts", {
+          method: "POST",
+          body: JSON.stringify({
+            organization_id: Number(organizationId),
+            employee_id: shift.employee_id,
+            shift_date: addDays(scheduleWeekStart, daysFromPreviousWeek),
+            start_at: toIsoDateTime(addDays(scheduleWeekStart, daysFromPreviousWeek), splitIsoDateTime(shift.start_at).time),
+            end_at: toIsoDateTime(addDays(scheduleWeekStart, daysFromPreviousWeek), splitIsoDateTime(shift.end_at).time),
+            location_name: shift.location_name,
+            role_label: shift.role_label,
+          }),
+        });
+      }
+      await refreshAdminData("Previous week copied into the current planner.");
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Unable to copy previous week.");
     }
-
-    await refreshAdminData("Previous week copied into the current planner.");
   }
 
   async function handlePublishScheduleWeek() {
@@ -1973,8 +1992,11 @@ export default function App() {
     }))
     .filter((entry) => entry.hours > 0);
   const overtimeWarnings = weeklyEmployeeHours.filter((entry) => entry.hours > 40);
-  const formShiftStart = shiftForm.shift_date ? toIsoDateTime(shiftForm.shift_date, shiftForm.start_time) : "";
-  const formShiftEnd = shiftForm.shift_date ? toIsoDateTime(shiftForm.shift_date, shiftForm.end_time) : "";
+  const hasShiftDateAndTimes = Boolean(shiftForm.shift_date && shiftForm.start_time && shiftForm.end_time);
+  const formShiftStart = hasShiftDateAndTimes ? toIsoDateTime(shiftForm.shift_date, shiftForm.start_time) : "";
+  const formShiftEnd = hasShiftDateAndTimes ? toIsoDateTime(shiftForm.shift_date, shiftForm.end_time) : "";
+  const shiftFormIsValid = Boolean(shiftForm.employee_id) && Boolean(shiftForm.shift_date) && Boolean(shiftForm.start_time)
+    && Boolean(shiftForm.end_time) && shiftForm.end_time > shiftForm.start_time;
   const shiftFormWarnings = shiftForm.employee_id && shiftForm.shift_date
     ? [
         ...shifts
@@ -3197,7 +3219,7 @@ export default function App() {
                       </div>
                     ) : null}
                     <div className="action-row">
-                      <button className="primary-button" type="submit">
+                      <button className="primary-button" type="submit" disabled={!shiftFormIsValid}>
                         {shiftForm.id ? "Save Shift" : "Create Shift"}
                       </button>
                       <button className="ghost-button" type="button" onClick={resetShiftForm}>
