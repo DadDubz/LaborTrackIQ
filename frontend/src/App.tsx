@@ -954,6 +954,7 @@ export default function App() {
   function handleEmployeeLogout() {
     setEmployeePortal(null);
     setEmployeeTab("home");
+    setEmployeeRequestQueueTab("pending");
     setEmployeeClockMessage("Employee signed out from the kiosk.");
     setRequestOffMessage("");
     setEmployeeRequests([]);
@@ -993,6 +994,7 @@ export default function App() {
         },
       );
       setRequestOffMessage("Request off submitted for manager review.");
+      setEmployeeRequestQueueTab("pending");
       setRequestOffForm({
         start_date: new Date().toISOString().slice(0, 10),
         end_date: new Date().toISOString().slice(0, 10),
