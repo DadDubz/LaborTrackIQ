@@ -892,9 +892,9 @@ export default function App() {
 
   function appendKeypadValue(value: string) {
     if (activeKeypadField === "employee") {
-      setEmployeeNumber((current) => `${current}${value}`.slice(0, 8));
+      setEmployeeNumber((current) => `${current}${value}`.slice(0, 32));
     } else {
-      setPinCode((current) => `${current}${value}`.slice(0, 8));
+      setPinCode((current) => `${current}${value}`.slice(0, 12));
     }
   }
 
@@ -915,6 +915,21 @@ export default function App() {
   }
 
   async function handleEmployeeClockAction() {
+    const normalizedOrganizationId = Number(organizationId);
+    const normalizedEmployeeNumber = employeeNumber.trim();
+    const normalizedPinCode = pinCode.trim();
+    if (!Number.isInteger(normalizedOrganizationId) || normalizedOrganizationId <= 0) {
+      setEmployeeError("Please enter a valid organization ID.");
+      return;
+    }
+    if (!normalizedEmployeeNumber) {
+      setEmployeeError("Please enter your employee number.");
+      return;
+    }
+    if (!normalizedPinCode) {
+      setEmployeeError("Please enter your PIN.");
+      return;
+    }
     setIsClockLoading(true);
     setEmployeeError("");
     try {
@@ -923,9 +938,9 @@ export default function App() {
         {
           method: "POST",
           body: JSON.stringify({
-            organization_id: Number(organizationId),
-            employee_number: employeeNumber,
-            pin_code: pinCode,
+            organization_id: normalizedOrganizationId,
+            employee_number: normalizedEmployeeNumber,
+            pin_code: normalizedPinCode,
             source: "tablet-keypad",
           }),
         },
@@ -2102,7 +2117,12 @@ export default function App() {
                 ))}
               </div>
 
-              <button className="primary-button wide-button" type="button" onClick={() => void handleEmployeeClockAction()} disabled={isClockLoading}>
+              <button
+                className="primary-button wide-button"
+                type="button"
+                onClick={() => void handleEmployeeClockAction()}
+                disabled={isClockLoading || !organizationId.trim() || !employeeNumber.trim() || !pinCode.trim()}
+              >
                 {isClockLoading ? "Working..." : "Clock In / Out"}
               </button>
 
