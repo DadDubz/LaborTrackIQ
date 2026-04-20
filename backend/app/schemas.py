@@ -168,7 +168,7 @@ class AvailabilityRequestCreate(BaseModel):
     end_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     start_date: Optional[date] = None
     end_date: Optional[date] = None
-    note: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=1000)
 
 
 class AvailabilityRequestRead(BaseModel):
@@ -198,7 +198,7 @@ class ShiftChangeRequestCreate(BaseModel):
     shift_id: int
     requester_employee_id: Optional[int] = None
     request_type: ShiftChangeType
-    note: str
+    note: str = Field(min_length=1, max_length=1000)
 
 
 class ShiftChangeRequestUpdate(BaseModel):
@@ -463,7 +463,7 @@ class TimeOffRequestCreate(BaseModel):
     employee_id: int
     start_date: date
     end_date: date
-    reason: str
+    reason: str = Field(min_length=1, max_length=1000)
 
 
 class TimeOffRequestRead(BaseModel):
