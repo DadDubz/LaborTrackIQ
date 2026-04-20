@@ -1547,14 +1547,20 @@ def create_availability_request(
     employee = get_authenticated_employee_for_self_service(payload.employee_id, x_employee_number, x_employee_pin, db)
     if employee.organization_id != payload.organization_id:
         raise HTTPException(status_code=403, detail="Cross-organization access is not allowed.")
+    has_date_range_values = payload.start_date is not None or payload.end_date is not None
     if payload.weekday is None and (payload.start_date is None or payload.end_date is None):
         raise HTTPException(status_code=400, detail="Provide either a weekday or a start and end date.")
+    if payload.weekday is not None and has_date_range_values:
+        raise HTTPException(status_code=400, detail="Provide either a weekday or a start and end date, not both.")
     if payload.weekday is not None and (payload.weekday < 0 or payload.weekday > 6):
         raise HTTPException(status_code=400, detail="weekday must be between 0 and 6.")
     if payload.start_date and payload.end_date and payload.end_date < payload.start_date:
         raise HTTPException(status_code=400, detail="end_date must be on or after start_date.")
     if payload.end_time <= payload.start_time:
         raise HTTPException(status_code=400, detail="end_time must be after start_time.")
+    note = payload.note.strip() if payload.note else None
+    if note == "":
+        note = None
     stored_weekday = payload.weekday if payload.weekday is not None else -1
     request = EmployeeAvailabilityRequest(
         organization_id=payload.organization_id,
@@ -1564,7 +1570,7 @@ def create_availability_request(
         end_time=payload.end_time,
         start_date=payload.start_date,
         end_date=payload.end_date,
-        note=payload.note,
+        note=note,
     )
     db.add(request)
     db.commit()

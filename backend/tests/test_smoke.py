@@ -504,6 +504,39 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         )
         self.assertEqual(invalid_window.status_code, 400, invalid_window.text)
 
+    def test_availability_request_rejects_mixed_weekday_and_date_range(self):
+        mixed_mode = self.client.post(
+            "/api/availability-requests",
+            headers=self.employee_headers(),
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "weekday": 2,
+                "start_time": "09:00",
+                "end_time": "17:00",
+                "start_date": date.today().isoformat(),
+                "end_date": (date.today() + timedelta(days=1)).isoformat(),
+                "note": "Mixed mode should fail",
+            },
+        )
+        self.assertEqual(mixed_mode.status_code, 400, mixed_mode.text)
+
+    def test_availability_request_trims_blank_note_to_null(self):
+        created = self.client.post(
+            "/api/availability-requests",
+            headers=self.employee_headers(),
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "weekday": 3,
+                "start_time": "09:00",
+                "end_time": "17:00",
+                "note": "   ",
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        self.assertIsNone(created.json()["note"])
+
     def test_admin_audit_events_capture_user_creation(self):
         headers = self.admin_headers()
         created = self.client.post(
