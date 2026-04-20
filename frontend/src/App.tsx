@@ -1230,16 +1230,37 @@ export default function App() {
   async function handleSubmitEmployee(event: FormEvent) {
     event.preventDefault();
     setAdminError("");
+    const trimmedFullName = employeeForm.full_name.trim();
+    const trimmedEmail = employeeForm.email.trim();
+    const trimmedEmployeeNumber = employeeForm.employee_number.trim();
+    const trimmedPinCode = employeeForm.pin_code.trim();
+    const trimmedJobTitle = employeeForm.job_title.trim();
+    if (!trimmedFullName) {
+      setAdminError("Employee full name is required.");
+      return;
+    }
+    if (!/^[A-Za-z0-9-]{1,32}$/.test(trimmedEmployeeNumber)) {
+      setAdminError("Employee number must be 1-32 characters using letters, numbers, or hyphens.");
+      return;
+    }
+    if (!/^\d{4,12}$/.test(trimmedPinCode)) {
+      setAdminError("Employee PIN must be 4-12 digits.");
+      return;
+    }
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setAdminError("Please enter a valid employee email.");
+      return;
+    }
     try {
       if (employeeForm.id) {
         await apiFetch(`/users/${employeeForm.id}`, {
           method: "PUT",
           body: JSON.stringify({
-            full_name: employeeForm.full_name,
-            email: employeeForm.email || null,
-            employee_number: employeeForm.employee_number,
-            pin_code: employeeForm.pin_code,
-            job_title: employeeForm.job_title || null,
+            full_name: trimmedFullName,
+            email: trimmedEmail || null,
+            employee_number: trimmedEmployeeNumber,
+            pin_code: trimmedPinCode,
+            job_title: trimmedJobTitle || null,
             is_active: employeeForm.is_active,
           }),
         });
@@ -1249,12 +1270,12 @@ export default function App() {
           method: "POST",
           body: JSON.stringify({
             organization_id: Number(organizationId),
-            full_name: employeeForm.full_name,
-            email: employeeForm.email || null,
+            full_name: trimmedFullName,
+            email: trimmedEmail || null,
             role: "employee",
-            employee_number: employeeForm.employee_number,
-            pin_code: employeeForm.pin_code,
-            job_title: employeeForm.job_title || null,
+            employee_number: trimmedEmployeeNumber,
+            pin_code: trimmedPinCode,
+            job_title: trimmedJobTitle || null,
           }),
         });
         await refreshAdminData("Employee created.");
@@ -1752,13 +1773,23 @@ export default function App() {
   async function handleSubmitReportRecipient(event: FormEvent) {
     event.preventDefault();
     setAdminError("");
+    const trimmedEmail = reportRecipientForm.email.trim();
+    const trimmedReportType = reportRecipientForm.report_type.trim();
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setAdminError("Please enter a valid report recipient email.");
+      return;
+    }
+    if (!trimmedReportType) {
+      setAdminError("Please select a report type.");
+      return;
+    }
     try {
       await apiFetch("/report-recipients", {
         method: "POST",
         body: JSON.stringify({
           organization_id: Number(organizationId),
-          email: reportRecipientForm.email,
-          report_type: reportRecipientForm.report_type,
+          email: trimmedEmail,
+          report_type: trimmedReportType,
         }),
       });
       setReportRecipientForm({ email: "", report_type: "daily_labor_summary" });
@@ -1978,6 +2009,16 @@ export default function App() {
   const approvedTimeEntries = timeEntries.filter((entry) => entry.approved && Boolean(entry.clock_out_at));
   const pendingAvailabilityRequests = orgAvailabilityRequests.filter((request) => request.status === "pending");
   const recentSchedulePublications = schedulePublications.slice(0, 6);
+  const employeeFormEmail = employeeForm.email.trim();
+  const employeeFormNumber = employeeForm.employee_number.trim();
+  const employeeFormPin = employeeForm.pin_code.trim();
+  const employeeFormIsValid = Boolean(employeeForm.full_name.trim())
+    && /^[A-Za-z0-9-]{1,32}$/.test(employeeFormNumber)
+    && /^\d{4,12}$/.test(employeeFormPin)
+    && (!employeeFormEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employeeFormEmail));
+  const reportRecipientEmail = reportRecipientForm.email.trim();
+  const reportRecipientIsValid = Boolean(reportRecipientForm.report_type.trim())
+    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(reportRecipientEmail);
 
   function handleNotificationClick(item: NotificationItem) {
     if (item.category === "availability") {
@@ -2733,7 +2774,9 @@ export default function App() {
                       <strong>Report Recipients</strong>
                       <input
                         placeholder="Email address"
+                        type="email"
                         value={reportRecipientForm.email}
+                        maxLength={255}
                         onChange={(event) => setReportRecipientForm({ ...reportRecipientForm, email: event.target.value })}
                       />
                       <select
@@ -2744,7 +2787,7 @@ export default function App() {
                         <option value="missed_punch_report">Missed Punch Report</option>
                         <option value="payroll_export">Payroll Export</option>
                       </select>
-                      <button className="primary-button" type="submit">
+                      <button className="primary-button" type="submit" disabled={!reportRecipientIsValid}>
                         Add Recipient
                       </button>
                       {reportRecipients.length > 0 ? (
@@ -2783,17 +2826,28 @@ export default function App() {
                 <div className="admin-section">
                   <form className="stack-form" onSubmit={handleSubmitEmployee}>
                     <h4>{employeeForm.id ? "Edit Employee" : "Add Employee"}</h4>
-                    <input placeholder="Full name" value={employeeForm.full_name} onChange={(event) => setEmployeeForm({ ...employeeForm, full_name: event.target.value })} />
-                    <input placeholder="Email" value={employeeForm.email} onChange={(event) => setEmployeeForm({ ...employeeForm, email: event.target.value })} />
-                    <input placeholder="Employee number" value={employeeForm.employee_number} onChange={(event) => setEmployeeForm({ ...employeeForm, employee_number: event.target.value })} />
-                    <input placeholder="PIN" value={employeeForm.pin_code} onChange={(event) => setEmployeeForm({ ...employeeForm, pin_code: event.target.value })} />
+                    <input placeholder="Full name" value={employeeForm.full_name} maxLength={255} onChange={(event) => setEmployeeForm({ ...employeeForm, full_name: event.target.value })} />
+                    <input placeholder="Email" type="email" value={employeeForm.email} maxLength={255} onChange={(event) => setEmployeeForm({ ...employeeForm, email: event.target.value })} />
+                    <input
+                      placeholder="Employee number"
+                      value={employeeForm.employee_number}
+                      maxLength={32}
+                      onChange={(event) => setEmployeeForm({ ...employeeForm, employee_number: event.target.value })}
+                    />
+                    <input
+                      placeholder="PIN"
+                      value={employeeForm.pin_code}
+                      maxLength={12}
+                      inputMode="numeric"
+                      onChange={(event) => setEmployeeForm({ ...employeeForm, pin_code: event.target.value })}
+                    />
                     <input placeholder="Job title" value={employeeForm.job_title} onChange={(event) => setEmployeeForm({ ...employeeForm, job_title: event.target.value })} />
                     <label className="checkbox-row">
                       <input type="checkbox" checked={employeeForm.is_active} onChange={(event) => setEmployeeForm({ ...employeeForm, is_active: event.target.checked })} />
                       Active employee
                     </label>
                     <div className="action-row">
-                      <button className="primary-button" type="submit">
+                      <button className="primary-button" type="submit" disabled={!employeeFormIsValid}>
                         {employeeForm.id ? "Save Employee" : "Create Employee"}
                       </button>
                       <button className="ghost-button" type="button" onClick={resetEmployeeForm}>
