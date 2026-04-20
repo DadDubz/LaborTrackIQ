@@ -1258,6 +1258,22 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400, response.text)
 
+    def test_time_off_request_trims_reason_text(self):
+        request_day = date.today() + timedelta(days=3)
+        response = self.client.post(
+            "/api/time-off-requests",
+            headers=self.employee_headers(),
+            json={
+                "organization_id": 1,
+                "employee_id": 3,
+                "start_date": request_day.isoformat(),
+                "end_date": request_day.isoformat(),
+                "reason": "  Doctor appointment  ",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["reason"], "Doctor appointment")
+
     def test_bootstrap_can_be_disabled_for_non_local_environments(self):
         original_value = settings.allow_demo_bootstrap
         settings.allow_demo_bootstrap = False
