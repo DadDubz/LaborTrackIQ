@@ -653,6 +653,22 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         self.assertEqual(created.json()["title"], "Prep Reminder")
         self.assertEqual(created.json()["body"], "Restock dry goods before open.")
 
+    def test_note_creation_rejects_title_longer_than_schema_limit(self):
+        headers = self.admin_headers()
+        too_long_title = self.client.post(
+            "/api/notes",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": None,
+                "title": "x" * 181,
+                "body": "Valid body",
+                "is_active": True,
+                "show_at_clock_in": True,
+            },
+        )
+        self.assertEqual(too_long_title.status_code, 422, too_long_title.text)
+
     def test_employee_pin_is_not_stored_plaintext(self):
         with Session(engine) as db:
             profile = db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_number == "1001"))
