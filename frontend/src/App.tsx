@@ -2276,6 +2276,7 @@ export default function App() {
                   <textarea
                     placeholder="Tell the admin why you need the time off"
                     value={requestOffForm.reason}
+                    maxLength={1000}
                     onChange={(event) => setRequestOffForm({ ...requestOffForm, reason: event.target.value })}
                   />
                   {!requestOffDatesAreValid ? <p className="muted-copy">End date must be on or after the start date.</p> : null}
@@ -2374,6 +2375,7 @@ export default function App() {
                   <textarea
                     placeholder="Optional note for your manager"
                     value={availabilityForm.note}
+                    maxLength={1000}
                     onChange={(event) => setAvailabilityForm({ ...availabilityForm, note: event.target.value })}
                   />
                   {!availabilityDatesAreValid ? <p className="muted-copy">End date must be on or after the start date.</p> : null}
@@ -2434,6 +2436,7 @@ export default function App() {
                   <textarea
                     placeholder="Tell your manager what changed and who might be able to help."
                     value={shiftChangeForm.note}
+                    maxLength={1000}
                     onChange={(event) => setShiftChangeForm({ ...shiftChangeForm, note: event.target.value })}
                   />
                   <button
