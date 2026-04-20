@@ -978,6 +978,10 @@ export default function App() {
       setEmployeeError("Please add a reason for your request off.");
       return;
     }
+    if (requestOffForm.end_date < requestOffForm.start_date) {
+      setEmployeeError("Request off end date must be on or after the start date.");
+      return;
+    }
     setEmployeeError("");
     try {
       await employeeApiFetch(
@@ -1037,6 +1041,15 @@ export default function App() {
   async function handleAvailabilitySubmit(event: FormEvent) {
     event.preventDefault();
     if (!employeePortal) {
+      setEmployeeError("Please sign in with your employee number and PIN.");
+      return;
+    }
+    if (availabilityForm.mode === "date_range" && availabilityForm.end_date < availabilityForm.start_date) {
+      setEmployeeError("Availability end date must be on or after the start date.");
+      return;
+    }
+    if (availabilityForm.end_time <= availabilityForm.start_time) {
+      setEmployeeError("Availability end time must be after the start time.");
       return;
     }
     setEmployeeError("");
@@ -1930,6 +1943,12 @@ export default function App() {
   const pendingEmployeeRequests = employeeRequests.filter((request) => request.status === "pending");
   const approvedEmployeeRequests = employeeRequests.filter((request) => request.status === "approved");
   const visibleEmployeeRequests = employeeRequestQueueTab === "pending" ? pendingEmployeeRequests : approvedEmployeeRequests;
+  const requestOffDatesAreValid = requestOffForm.start_date <= requestOffForm.end_date;
+  const availabilityDatesAreValid =
+    availabilityForm.mode === "recurring" ||
+    (Boolean(availabilityForm.start_date) && Boolean(availabilityForm.end_date) && availabilityForm.start_date <= availabilityForm.end_date);
+  const availabilityTimesAreValid = availabilityForm.end_time > availabilityForm.start_time;
+  const availabilityFormIsValid = availabilityDatesAreValid && availabilityTimesAreValid;
   const pendingShiftChangeRequests = orgShiftChangeRequests.filter((request) => request.status === "pending");
   const approvedShiftChangeRequests = orgShiftChangeRequests.filter((request) => request.status === "approved");
   const visibleShiftChangeRequests = requestQueueTab === "pending" ? pendingShiftChangeRequests : approvedShiftChangeRequests;
@@ -2259,10 +2278,11 @@ export default function App() {
                     value={requestOffForm.reason}
                     onChange={(event) => setRequestOffForm({ ...requestOffForm, reason: event.target.value })}
                   />
+                  {!requestOffDatesAreValid ? <p className="muted-copy">End date must be on or after the start date.</p> : null}
                   <button
                     className="primary-button"
                     type="submit"
-                    disabled={!requestOffForm.reason.trim()}
+                    disabled={!requestOffForm.reason.trim() || !requestOffDatesAreValid}
                   >
                     Submit Request
                   </button>
@@ -2356,7 +2376,9 @@ export default function App() {
                     value={availabilityForm.note}
                     onChange={(event) => setAvailabilityForm({ ...availabilityForm, note: event.target.value })}
                   />
-                  <button className="primary-button" type="submit">
+                  {!availabilityDatesAreValid ? <p className="muted-copy">End date must be on or after the start date.</p> : null}
+                  {!availabilityTimesAreValid ? <p className="muted-copy">End time must be after the start time.</p> : null}
+                  <button className="primary-button" type="submit" disabled={!availabilityFormIsValid}>
                     Submit Availability
                   </button>
                 </form>
