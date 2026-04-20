@@ -1552,11 +1552,17 @@ export default function App() {
   async function handleSubmitNote(event: FormEvent) {
     event.preventDefault();
     setAdminError("");
+    const trimmedTitle = noteForm.title.trim();
+    const trimmedBody = noteForm.body.trim();
+    if (!trimmedTitle || !trimmedBody) {
+      setAdminError("Note title and message are required.");
+      return;
+    }
     const payload = {
       organization_id: Number(organizationId),
       employee_id: noteForm.employee_id === "all" ? null : Number(noteForm.employee_id),
-      title: noteForm.title,
-      body: noteForm.body,
+      title: trimmedTitle,
+      body: trimmedBody,
       is_active: noteForm.is_active,
       show_at_clock_in: noteForm.show_at_clock_in,
     };
@@ -3328,8 +3334,18 @@ export default function App() {
                         </option>
                       ))}
                     </select>
-                    <input placeholder="Title" value={noteForm.title} onChange={(event) => setNoteForm({ ...noteForm, title: event.target.value })} />
-                    <textarea placeholder="Message for the shift team" value={noteForm.body} onChange={(event) => setNoteForm({ ...noteForm, body: event.target.value })} />
+                    <input
+                      placeholder="Title"
+                      value={noteForm.title}
+                      maxLength={180}
+                      onChange={(event) => setNoteForm({ ...noteForm, title: event.target.value })}
+                    />
+                    <textarea
+                      placeholder="Message for the shift team"
+                      value={noteForm.body}
+                      maxLength={5000}
+                      onChange={(event) => setNoteForm({ ...noteForm, body: event.target.value })}
+                    />
                     <label className="checkbox-row">
                       <input type="checkbox" checked={noteForm.is_active} onChange={(event) => setNoteForm({ ...noteForm, is_active: event.target.checked })} />
                       Active note
@@ -3343,7 +3359,7 @@ export default function App() {
                       Show at clock-in
                     </label>
                     <div className="action-row">
-                      <button className="primary-button" type="submit">
+                      <button className="primary-button" type="submit" disabled={!noteForm.title.trim() || !noteForm.body.trim()}>
                         {noteForm.id ? "Save Note" : "Create Note"}
                       </button>
                       <button className="ghost-button" type="button" onClick={resetNoteForm}>

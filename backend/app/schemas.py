@@ -255,8 +255,8 @@ class CoverageTargetRead(BaseModel):
 class NoteCreate(BaseModel):
     organization_id: int
     employee_id: Optional[int] = None
-    title: str
-    body: str
+    title: str = Field(min_length=1, max_length=180)
+    body: str = Field(min_length=1, max_length=5000)
     is_active: bool = True
     show_at_clock_in: bool = True
 
@@ -276,8 +276,8 @@ class NoteRead(BaseModel):
 
 class NoteUpdate(BaseModel):
     employee_id: Optional[int] = None
-    title: str
-    body: str
+    title: str = Field(min_length=1, max_length=180)
+    body: str = Field(min_length=1, max_length=5000)
     is_active: bool = True
     show_at_clock_in: bool = True
 

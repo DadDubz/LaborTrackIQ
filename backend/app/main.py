@@ -1928,7 +1928,18 @@ def create_note(
 ):
     validate_organization_access(payload.organization_id, current_user)
     validate_optional_employee_target_for_admin(payload.employee_id, payload.organization_id, db)
-    note = ManagerNote(**payload.model_dump())
+    title = payload.title.strip()
+    body = payload.body.strip()
+    if not title or not body:
+        raise HTTPException(status_code=400, detail="Note title and body are required.")
+    note = ManagerNote(
+        organization_id=payload.organization_id,
+        employee_id=payload.employee_id,
+        title=title,
+        body=body,
+        is_active=payload.is_active,
+        show_at_clock_in=payload.show_at_clock_in,
+    )
     db.add(note)
     db.flush()
     record_audit_event(
@@ -1967,9 +1978,13 @@ def update_note(
 ):
     note = get_note_for_admin(note_id, current_user, db)
     validate_optional_employee_target_for_admin(payload.employee_id, note.organization_id, db)
+    title = payload.title.strip()
+    body = payload.body.strip()
+    if not title or not body:
+        raise HTTPException(status_code=400, detail="Note title and body are required.")
     note.employee_id = payload.employee_id
-    note.title = payload.title
-    note.body = payload.body
+    note.title = title
+    note.body = body
     note.is_active = payload.is_active
     note.show_at_clock_in = payload.show_at_clock_in
     record_audit_event(

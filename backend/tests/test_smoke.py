@@ -584,6 +584,40 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         matching = [event for event in events.json() if event["action"] == "note_created" and event["entity_id"] == created_note_id]
         self.assertTrue(matching)
 
+    def test_note_creation_rejects_blank_title_or_body(self):
+        headers = self.admin_headers()
+        blank_note = self.client.post(
+            "/api/notes",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": None,
+                "title": "  ",
+                "body": "   ",
+                "is_active": True,
+                "show_at_clock_in": True,
+            },
+        )
+        self.assertEqual(blank_note.status_code, 400, blank_note.text)
+
+    def test_note_creation_trims_title_and_body(self):
+        headers = self.admin_headers()
+        created = self.client.post(
+            "/api/notes",
+            headers=headers,
+            json={
+                "organization_id": 1,
+                "employee_id": None,
+                "title": "  Prep Reminder  ",
+                "body": "  Restock dry goods before open.  ",
+                "is_active": True,
+                "show_at_clock_in": True,
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        self.assertEqual(created.json()["title"], "Prep Reminder")
+        self.assertEqual(created.json()["body"], "Restock dry goods before open.")
+
     def test_employee_pin_is_not_stored_plaintext(self):
         with Session(engine) as db:
             profile = db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_number == "1001"))
