@@ -1187,15 +1187,30 @@ export default function App() {
   async function handleAdminLogin(event: FormEvent) {
     event.preventDefault();
     setAdminError("");
+    const normalizedOrganizationId = Number(organizationId);
+    const trimmedAdminEmail = adminEmail.trim();
+    const trimmedAdminPassword = adminPassword.trim();
+    if (!Number.isInteger(normalizedOrganizationId) || normalizedOrganizationId <= 0) {
+      setAdminError("Please enter a valid organization ID before admin login.");
+      return;
+    }
+    if (!trimmedAdminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedAdminEmail)) {
+      setAdminError("Please enter a valid admin email.");
+      return;
+    }
+    if (!trimmedAdminPassword) {
+      setAdminError("Please enter your admin password.");
+      return;
+    }
     try {
       const data = (await apiFetch(
         "/auth/login",
         {
           method: "POST",
           body: JSON.stringify({
-            organization_id: Number(organizationId),
-            email: adminEmail,
-            password: adminPassword,
+            organization_id: normalizedOrganizationId,
+            email: trimmedAdminEmail,
+            password: trimmedAdminPassword,
           }),
         },
         "",
@@ -2012,6 +2027,12 @@ export default function App() {
   const employeeFormEmail = employeeForm.email.trim();
   const employeeFormNumber = employeeForm.employee_number.trim();
   const employeeFormPin = employeeForm.pin_code.trim();
+  const adminEmailTrimmed = adminEmail.trim();
+  const adminPasswordTrimmed = adminPassword.trim();
+  const adminLoginIsValid = Number.isInteger(Number(organizationId))
+    && Number(organizationId) > 0
+    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmailTrimmed)
+    && Boolean(adminPasswordTrimmed);
   const employeeFormIsValid = Boolean(employeeForm.full_name.trim())
     && /^[A-Za-z0-9-]{1,32}$/.test(employeeFormNumber)
     && /^\d{4,12}$/.test(employeeFormPin)
@@ -2639,13 +2660,13 @@ export default function App() {
               <form className="admin-form" onSubmit={handleAdminLogin}>
                 <label>
                   Admin Email
-                  <input value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} />
+                  <input type="email" value={adminEmail} maxLength={255} onChange={(event) => setAdminEmail(event.target.value)} />
                 </label>
                 <label>
                   Password
                   <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} />
                 </label>
-                <button className="primary-button" type="submit">
+                <button className="primary-button" type="submit" disabled={!adminLoginIsValid}>
                   Admin Login
                 </button>
               </form>
