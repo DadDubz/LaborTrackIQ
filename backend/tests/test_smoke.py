@@ -139,6 +139,47 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 413, response.text)
 
+    def test_organization_creation_rejects_blank_fields(self):
+        response = self.client.post(
+            "/api/organizations",
+            json={
+                "name": "   ",
+                "timezone": " ",
+                "admin_name": " ",
+                "admin_email": "org.admin@example.com",
+                "admin_password": "admin1234",
+            },
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+
+    def test_organization_creation_trims_name_timezone_and_admin_name(self):
+        response = self.client.post(
+            "/api/organizations",
+            json={
+                "name": "  Trimmed Org  ",
+                "timezone": "  America/Chicago  ",
+                "admin_name": "  Trimmed Admin  ",
+                "admin_email": "trimmed.admin@example.com",
+                "admin_password": "admin1234",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        organization_id = response.json()["organization_id"]
+
+        with Session(engine) as db:
+            organization = db.get(Organization, organization_id)
+            self.assertIsNotNone(organization)
+            self.assertEqual(organization.name, "Trimmed Org")
+            self.assertEqual(organization.timezone, "America/Chicago")
+            admin = db.scalar(
+                select(User).where(
+                    User.organization_id == organization_id,
+                    User.role == UserRole.ADMIN,
+                )
+            )
+            self.assertIsNotNone(admin)
+            self.assertEqual(admin.full_name, "Trimmed Admin")
+
     def test_login_rate_limit_returns_429_when_exceeded(self):
         original_limit = settings.auth_rate_limit
         original_window = settings.auth_rate_window_seconds

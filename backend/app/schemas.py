@@ -18,9 +18,9 @@ from app.models import (
 
 
 class OrganizationCreate(BaseModel):
-    name: str
-    timezone: str = "America/Chicago"
-    admin_name: str
+    name: str = Field(min_length=1, max_length=255)
+    timezone: str = Field(default="America/Chicago", min_length=1, max_length=64)
+    admin_name: str = Field(min_length=1, max_length=255)
     admin_email: EmailStr
     admin_password: str = Field(min_length=8, max_length=128)
 

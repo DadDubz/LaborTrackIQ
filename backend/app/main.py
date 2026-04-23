@@ -793,13 +793,18 @@ def readiness_check(db: Session = Depends(get_db)):
 
 @app.post(f"{settings.api_prefix}/organizations", response_model=dict)
 def create_organization(payload: OrganizationCreate, db: Session = Depends(get_db)):
-    organization = Organization(name=payload.name, timezone=payload.timezone)
+    organization_name = payload.name.strip()
+    timezone = payload.timezone.strip()
+    admin_name = payload.admin_name.strip()
+    if not organization_name or not timezone or not admin_name:
+        raise HTTPException(status_code=400, detail="Organization name, timezone, and admin_name are required.")
+    organization = Organization(name=organization_name, timezone=timezone)
     db.add(organization)
     db.flush()
 
     admin = User(
         organization_id=organization.id,
-        full_name=payload.admin_name,
+        full_name=admin_name,
         email=payload.admin_email,
         role=UserRole.ADMIN,
         password_hash=hash_password(payload.admin_password),
