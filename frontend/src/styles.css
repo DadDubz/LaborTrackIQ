@@ -53,6 +53,21 @@ textarea {
   gap: 18px;
 }
 
+.public-brand-lockup {
+  align-items: flex-start;
+}
+
+.public-brand-stack {
+  display: grid;
+  gap: 6px;
+}
+
+.public-wordmark {
+  display: block;
+  width: min(430px, 56vw);
+  height: auto;
+}
+
 .public-nav,
 .marketing-actions {
   display: flex;
@@ -100,6 +115,14 @@ textarea {
     radial-gradient(circle at top right, rgba(196, 154, 86, 0.16), transparent 32%),
     linear-gradient(145deg, rgba(17, 33, 59, 0.98), rgba(32, 52, 84, 0.94));
   color: var(--miseiq-cream);
+}
+
+.hero-glow-mark {
+  display: block;
+  width: 82px;
+  height: 82px;
+  margin-bottom: 14px;
+  object-fit: contain;
 }
 
 .marketing-login-card,
@@ -174,6 +197,17 @@ textarea {
 .story-list-item p,
 .feature-card p {
   margin: 6px 0 0;
+}
+
+.feature-card-actions {
+  margin-top: 18px;
+}
+
+.external-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 .feature-grid,
@@ -265,6 +299,8 @@ textarea {
   width: 56px;
   height: 56px;
   flex: 0 0 auto;
+  border-radius: 18px;
+  object-fit: cover;
 }
 
 .inline-brand {
@@ -274,6 +310,8 @@ textarea {
 .inline-brand-mark {
   width: 42px;
   height: 42px;
+  border-radius: 14px;
+  object-fit: cover;
 }
 
 .brand-banner h2,
@@ -1245,6 +1283,10 @@ textarea {
     align-items: flex-start;
   }
 
+  .public-wordmark {
+    width: min(340px, 72vw);
+  }
+
   .schedule-week-meta {
     justify-items: start;
   }
@@ -1262,6 +1304,11 @@ textarea {
   .feature-card {
     border-radius: 22px;
     padding: 24px;
+  }
+
+  .hero-glow-mark {
+    width: 68px;
+    height: 68px;
   }
 
   .hero-copy,

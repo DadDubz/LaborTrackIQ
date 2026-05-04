@@ -2197,11 +2197,10 @@ export default function App() {
     return (
       <div className="app-shell public-site">
         <header className="public-header panel">
-          <div className="brand-lockup">
-            <img className="brand-mark" src="/miseiq-mark.svg" alt="MiseIQ brand mark" />
-            <div>
+          <div className="brand-lockup public-brand-lockup">
+            <div className="public-brand-stack">
+              <img className="public-wordmark" src="/labortrackiq-wordmark-transparent.png" alt="LaborTrackIQ" />
               <p className="eyebrow">Powered by MiseIQ</p>
-              <h2>LaborTrackIQ</h2>
             </div>
           </div>
           <nav className="public-nav" aria-label="Public site navigation">
@@ -2226,6 +2225,7 @@ export default function App() {
           <>
             <section className="public-hero">
               <article className="marketing-hero-card">
+                <img className="hero-glow-mark" src="/labortrackiq-glow-mark.png" alt="" aria-hidden="true" />
                 <p className="eyebrow">Restaurant Workforce Platform</p>
                 <h1>Scheduling, time clock, and labor control for restaurant teams.</h1>
                 <p className="marketing-lede">
@@ -2339,9 +2339,21 @@ export default function App() {
 
               <article className="feature-card">
                 <p className="eyebrow">MiseIQ Connection</p>
-                <h3>Works best with MiseIQ and QuickBooks</h3>
+                <h3>Built to connect with MiseIQ</h3>
                 <p>LaborTrackIQ tracks scheduled hours, worked time, and manager-approved payroll activity.</p>
-                <p>All labor data can flow into MiseIQ for financial reporting, and restaurants can connect directly to QuickBooks for easier payroll.</p>
+                <p>All labor data can flow into MiseIQ so restaurant financial reporting and labor reporting stay connected in one system.</p>
+                <div className="feature-card-actions">
+                  <a className="primary-button external-link-button" href="https://about.miseiq.online" target="_blank" rel="noreferrer">
+                    Visit MiseIQ
+                  </a>
+                </div>
+              </article>
+
+              <article className="feature-card">
+                <p className="eyebrow">QuickBooks Integration</p>
+                <h3>Easy payroll connection</h3>
+                <p>Restaurants can connect directly to QuickBooks from LaborTrackIQ for easier payroll processing.</p>
+                <p>More integrations will be added soon so restaurants can connect LaborTrackIQ with even more systems.</p>
               </article>
             </div>
 
@@ -2446,7 +2458,7 @@ export default function App() {
     <div className="app-shell">
       <section className="brand-banner panel">
         <div className="brand-lockup">
-          <img className="brand-mark" src="/miseiq-mark.svg" alt="MiseIQ brand mark" />
+          <img className="brand-mark" src="/labortrackiq-app-icon.png" alt="LaborTrackIQ app icon" />
           <div>
             <p className="eyebrow">Powered by MiseIQ</p>
             <h2>LaborTrackIQ Control Center</h2>
@@ -2463,7 +2475,7 @@ export default function App() {
           <div className="kiosk-layout">
             <div className="kiosk-copy panel">
               <div className="inline-brand">
-                <img className="inline-brand-mark" src="/miseiq-mark.svg" alt="MiseIQ brand mark" />
+                <img className="inline-brand-mark" src="/labortrackiq-app-icon-light.png" alt="LaborTrackIQ app icon" />
               </div>
               <p className="eyebrow">LaborTrackIQ</p>
               <h1 className="kiosk-title">Clock In to the Shift Board</h1>
