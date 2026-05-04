@@ -2321,12 +2321,29 @@ export default function App() {
         ) : (
           <section className="info-page-shell">
             <article className="story-panel">
-              <p className="eyebrow">About LaborTrackIQ</p>
-              <h1>Restaurant labor tools for scheduling, time tracking, and team coordination.</h1>
-              <p className="marketing-lede">
-                Restaurants can use LaborTrackIQ to manage team schedules, employee clock-in, request handling, and labor
-                activity from one workspace.
-              </p>
+              <div className="story-panel-grid">
+                <div className="story-panel-copy">
+                  <p className="eyebrow">About LaborTrackIQ</p>
+                  <h1>Restaurant labor tools for scheduling, time tracking, and team coordination.</h1>
+                  <p className="marketing-lede">
+                    Restaurants can use LaborTrackIQ to manage team schedules, employee clock-in, request handling, and labor
+                    activity from one workspace.
+                  </p>
+                </div>
+                <div className="story-panel-side">
+                  <img className="story-panel-mark" src="/labortrackiq-glow-mark.png" alt="" aria-hidden="true" />
+                  <div className="story-panel-highlights">
+                    <div className="story-highlight-card">
+                      <strong>One workforce hub</strong>
+                      <p>Schedules, clock-ins, requests, and approvals in one system.</p>
+                    </div>
+                    <div className="story-highlight-card">
+                      <strong>Connected operations</strong>
+                      <p>MiseIQ reporting and QuickBooks payroll support built into the roadmap.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </article>
 
             <div className="info-page-grid">
@@ -2354,6 +2371,13 @@ export default function App() {
                 <h3>Easy payroll connection</h3>
                 <p>Restaurants can connect directly to QuickBooks from LaborTrackIQ for easier payroll processing.</p>
                 <p>More integrations will be added soon so restaurants can connect LaborTrackIQ with even more systems.</p>
+              </article>
+
+              <article className="feature-card">
+                <p className="eyebrow">Getting Started</p>
+                <h3>Clean setup for restaurant teams</h3>
+                <p>LaborTrackIQ can support operator groups that need location setup, manager access, employee profiles, and payroll-ready workflows.</p>
+                <p>That makes it easier to move away from spreadsheets, scattered notes, or disconnected labor tools.</p>
               </article>
             </div>
 

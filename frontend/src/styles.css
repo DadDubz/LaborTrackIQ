@@ -156,6 +156,49 @@ textarea {
   max-width: 14ch;
 }
 
+.story-panel-grid {
+  display: grid;
+  grid-template-columns: 1.08fr 0.92fr;
+  gap: 28px;
+  align-items: center;
+}
+
+.story-panel-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.story-panel-copy h1 {
+  max-width: 11ch;
+}
+
+.story-panel-side {
+  display: grid;
+  gap: 18px;
+  justify-items: stretch;
+}
+
+.story-panel-mark {
+  width: min(180px, 100%);
+  height: auto;
+  justify-self: center;
+}
+
+.story-panel-highlights {
+  display: grid;
+  gap: 12px;
+}
+
+.story-highlight-card {
+  border-radius: 20px;
+  padding: 18px 20px;
+  background: rgba(17, 33, 59, 0.06);
+}
+
+.story-highlight-card p {
+  margin: 6px 0 0;
+}
+
 .marketing-lede {
   margin: 18px 0 0;
   max-width: 42rem;
@@ -1233,7 +1276,8 @@ textarea {
   .public-hero,
   .request-access-section,
   .feature-grid,
-  .info-page-grid {
+  .info-page-grid,
+  .story-panel-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1285,6 +1329,10 @@ textarea {
 
   .public-wordmark {
     width: min(340px, 72vw);
+  }
+
+  .story-panel-mark {
+    width: 128px;
   }
 
   .schedule-week-meta {
