@@ -244,6 +244,7 @@ type KeypadField = "employee" | "pin";
 type RequestQueueTab = "pending" | "approved";
 type EmployeeRequestQueueTab = "pending" | "approved";
 type RequestBoardTab = "time_off" | "shift_changes";
+type PublicPage = "login" | "about";
 
 const DEMO_BOOTSTRAP_ENABLED =
   import.meta.env.DEV || String(import.meta.env.VITE_ENABLE_DEMO_BOOTSTRAP ?? "").toLowerCase() === "true";
@@ -254,6 +255,10 @@ const SHIFT_TEMPLATES = [
   { key: "close", label: "Close", start: "16:00", end: "22:00", role: "Closing Shift" },
   { key: "full", label: "Full Day", start: "09:00", end: "17:00", role: "Full Day Coverage" },
 ] as const;
+
+function readPublicPageFromHash(hash: string): PublicPage {
+  return hash === "#about" ? "about" : "login";
+}
 
 function formatShiftWindow(shift: Shift) {
   const start = new Date(shift.start_at);
@@ -580,6 +585,17 @@ export default function App() {
     notes: "",
     clock_out_at: "",
   });
+  const [publicPage, setPublicPage] = useState<PublicPage>(() => readPublicPageFromHash(window.location.hash));
+  const [accessRequestForm, setAccessRequestForm] = useState({
+    restaurant_name: "",
+    contact_name: "",
+    email: "",
+    locations: "1",
+    current_tools: "",
+    notes: "",
+  });
+  const [accessRequestError, setAccessRequestError] = useState("");
+  const [accessRequestMessage, setAccessRequestMessage] = useState("");
 
   useEffect(() => {
     const storedToken = window.localStorage.getItem("labortrackiq_token");
@@ -598,6 +614,12 @@ export default function App() {
     if (storedOrg) {
       setOrganizationId(storedOrg);
     }
+  }, []);
+
+  useEffect(() => {
+    const syncPublicPage = () => setPublicPage(readPublicPageFromHash(window.location.hash));
+    window.addEventListener("hashchange", syncPublicPage);
+    return () => window.removeEventListener("hashchange", syncPublicPage);
   }, []);
 
   useEffect(() => {
@@ -1240,6 +1262,50 @@ export default function App() {
     window.localStorage.removeItem("labortrackiq_token");
     window.localStorage.removeItem("labortrackiq_user");
     window.localStorage.removeItem("labortrackiq_org");
+    navigatePublicPage("login");
+  }
+
+  function navigatePublicPage(page: PublicPage) {
+    const hash = page === "about" ? "#about" : "#login";
+    setPublicPage(page);
+    if (window.location.hash !== hash) {
+      window.location.hash = hash;
+      return;
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleAccessRequestSubmit(event: FormEvent) {
+    event.preventDefault();
+    setAccessRequestError("");
+    setAccessRequestMessage("");
+
+    const restaurantName = accessRequestForm.restaurant_name.trim();
+    const contactName = accessRequestForm.contact_name.trim();
+    const email = accessRequestForm.email.trim();
+
+    if (!restaurantName) {
+      setAccessRequestError("Please enter the restaurant or group name.");
+      return;
+    }
+    if (!contactName) {
+      setAccessRequestError("Please enter the best contact name.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setAccessRequestError("Please enter a valid contact email.");
+      return;
+    }
+
+    setAccessRequestMessage(`Thanks, ${contactName}. Your access request for ${restaurantName} has been received.`);
+    setAccessRequestForm({
+      restaurant_name: "",
+      contact_name: "",
+      email: "",
+      locations: "1",
+      current_tools: "",
+      notes: "",
+    });
   }
 
   async function handleSubmitEmployee(event: FormEvent) {
@@ -2127,19 +2193,272 @@ export default function App() {
     }
   }
 
+  if (!adminUser) {
+    return (
+      <div className="app-shell public-site">
+        <header className="public-header panel">
+          <div className="brand-lockup">
+            <img className="brand-mark" src="/miseiq-mark.svg" alt="MiseIQ brand mark" />
+            <div>
+              <p className="eyebrow">MiseIQ Workforce</p>
+              <h2>Restaurant Labor, Scheduling, and Time Clock</h2>
+            </div>
+          </div>
+          <nav className="public-nav" aria-label="Public site navigation">
+            <button
+              className={publicPage === "login" ? "tab active-tab" : "tab"}
+              type="button"
+              onClick={() => navigatePublicPage("login")}
+            >
+              Restaurant Login
+            </button>
+            <button
+              className={publicPage === "about" ? "tab active-tab" : "tab"}
+              type="button"
+              onClick={() => navigatePublicPage("about")}
+            >
+              Learn More
+            </button>
+          </nav>
+        </header>
+
+        {publicPage === "login" ? (
+          <>
+            <section className="public-hero">
+              <article className="marketing-hero-card">
+                <p className="eyebrow">Restaurant Workforce Platform</p>
+                <h1>Scheduling, time clock, and labor control for restaurant teams.</h1>
+                <p className="marketing-lede">
+                  MiseIQ Workforce brings employee clock-in, manager scheduling, request handling, and payroll-ready labor
+                  visibility into one restaurant operations platform.
+                </p>
+                <div className="marketing-actions">
+                  <button className="primary-button" type="button" onClick={() => navigatePublicPage("about")}>
+                    View Product Details
+                  </button>
+                  <button className="ghost-button" type="button" onClick={() => navigatePublicPage("about")}>
+                    Request Access
+                  </button>
+                </div>
+                <div className="public-stat-row">
+                  <div className="public-stat-card">
+                    <strong>Time Clock</strong>
+                    <p>Employee punch flow with self-service schedule and requests.</p>
+                  </div>
+                  <div className="public-stat-card">
+                    <strong>Scheduling</strong>
+                    <p>Manager tools for coverage planning, publishing, and approvals.</p>
+                  </div>
+                  <div className="public-stat-card">
+                    <strong>MiseIQ Ready</strong>
+                    <p>Labor data prepared for reporting and future MiseIQ financial integration.</p>
+                  </div>
+                </div>
+              </article>
+
+              <aside className="marketing-login-card">
+                <div className="login-card-header">
+                  <div>
+                    <p className="eyebrow">Restaurant Login</p>
+                    <h3>Sign in to your workforce console</h3>
+                  </div>
+                  <span className="status-strip public-status-pill">{setupMessage}</span>
+                </div>
+                <p className="muted-copy">
+                  Owners, admins, and managers log in here to access scheduling, labor tools, and the employee clock terminal.
+                </p>
+                <form className="public-form" onSubmit={handleAdminLogin}>
+                  <label>
+                    Restaurant / Organization ID
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={organizationId}
+                      onChange={(event) => setOrganizationId(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Admin or Manager Email
+                    <input type="email" value={adminEmail} maxLength={255} onChange={(event) => setAdminEmail(event.target.value)} />
+                  </label>
+                  <label>
+                    Password
+                    <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} />
+                  </label>
+                  <button className="primary-button" type="submit" disabled={!adminLoginIsValid}>
+                    Enter Workforce Console
+                  </button>
+                </form>
+                {adminError ? <div className="inline-error">{adminError}</div> : null}
+                {adminMessage ? <div className="inline-message">{adminMessage}</div> : null}
+                <div className="login-support-card">
+                  <strong>What restaurants get after login</strong>
+                  <p>Employee clock-in, scheduling, time-off approvals, shift changes, payroll review, and integrations.</p>
+                </div>
+              </aside>
+            </section>
+
+            <section className="feature-grid">
+              <article className="feature-card">
+                <p className="eyebrow">Restaurant Login</p>
+                <h3>Secure access for owners and managers</h3>
+                <p>
+                  Restaurant leadership can sign in to one dedicated workforce dashboard for daily labor operations.
+                </p>
+              </article>
+              <article className="feature-card">
+                <p className="eyebrow">Daily Operations</p>
+                <h3>Clock-in, schedules, and requests in one place</h3>
+                <p>
+                  Staff can clock in and view what matters, while managers handle schedules, notes, requests, and timesheets.
+                </p>
+              </article>
+              <article className="feature-card">
+                <p className="eyebrow">MiseIQ Integration</p>
+                <h3>Built to connect with your financial tools</h3>
+                <p>
+                  Labor hours, approvals, and published schedules can support reporting and financial workflows in MiseIQ.
+                </p>
+              </article>
+            </section>
+          </>
+        ) : (
+          <section className="info-page-shell">
+            <article className="story-panel">
+              <p className="eyebrow">About MiseIQ Workforce</p>
+              <h1>Restaurant labor tools for scheduling, time tracking, and team coordination.</h1>
+              <p className="marketing-lede">
+                Restaurants can use MiseIQ Workforce to manage team schedules, employee clock-in, request handling, and labor
+                activity from one workspace.
+              </p>
+            </article>
+
+            <div className="info-page-grid">
+              <article className="feature-card">
+                <p className="eyebrow">What It Includes</p>
+                <h3>Tools for daily restaurant operations</h3>
+                <p>Managers can build schedules, publish shifts, review requests, post notes, and approve timesheets.</p>
+                <p>Employees can clock in, view schedules, request time off, update availability, and manage shift changes.</p>
+              </article>
+
+              <article className="feature-card">
+                <p className="eyebrow">MiseIQ Connection</p>
+                <h3>Labor data ready for reporting</h3>
+                <p>MiseIQ Workforce tracks scheduled hours, worked time, and manager-approved payroll activity.</p>
+                <p>This creates a clean labor record that can connect into broader reporting and financial workflows in MiseIQ.</p>
+              </article>
+            </div>
+
+            <section className="request-access-section">
+              <article className="request-access-panel">
+                <div className="section-heading">
+                  <div>
+                    <p className="eyebrow">Request Access</p>
+                    <h3>Request a setup conversation</h3>
+                  </div>
+                  <p className="muted-copy">Tell us about your restaurant and we will follow up about access and setup.</p>
+                </div>
+                <form className="request-access-form" onSubmit={handleAccessRequestSubmit}>
+                  <div className="request-access-grid">
+                    <label>
+                      Restaurant or Group Name
+                      <input
+                        type="text"
+                        value={accessRequestForm.restaurant_name}
+                        onChange={(event) => setAccessRequestForm({ ...accessRequestForm, restaurant_name: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Best Contact Name
+                      <input
+                        type="text"
+                        value={accessRequestForm.contact_name}
+                        onChange={(event) => setAccessRequestForm({ ...accessRequestForm, contact_name: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Contact Email
+                      <input
+                        type="email"
+                        value={accessRequestForm.email}
+                        onChange={(event) => setAccessRequestForm({ ...accessRequestForm, email: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Number of Locations
+                      <input
+                        type="text"
+                        value={accessRequestForm.locations}
+                        onChange={(event) => setAccessRequestForm({ ...accessRequestForm, locations: event.target.value })}
+                      />
+                    </label>
+                  </div>
+                  <label>
+                    Current Scheduling or Payroll Tools
+                    <input
+                      type="text"
+                      value={accessRequestForm.current_tools}
+                      onChange={(event) => setAccessRequestForm({ ...accessRequestForm, current_tools: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    What do you want help with first?
+                    <textarea
+                      value={accessRequestForm.notes}
+                      onChange={(event) => setAccessRequestForm({ ...accessRequestForm, notes: event.target.value })}
+                    />
+                  </label>
+                  <div className="action-row">
+                    <button className="primary-button" type="submit">
+                      Submit Request
+                    </button>
+                    <button className="ghost-button" type="button" onClick={() => navigatePublicPage("login")}>
+                      Back To Login
+                    </button>
+                  </div>
+                </form>
+                {accessRequestError ? <div className="inline-error">{accessRequestError}</div> : null}
+                {accessRequestMessage ? <div className="inline-message">{accessRequestMessage}</div> : null}
+              </article>
+
+              <aside className="story-panel compact-story-panel">
+                <p className="eyebrow">Who It Helps</p>
+                <h3>Built for restaurant teams</h3>
+                <div className="story-list">
+                  <div className="story-list-item">
+                    <strong>Owners and operators</strong>
+                    <p>Review labor activity, scheduling, and approvals from one dashboard.</p>
+                  </div>
+                  <div className="story-list-item">
+                    <strong>Managers</strong>
+                    <p>Run schedules, approve requests, track punches, and prepare timesheets for payroll.</p>
+                  </div>
+                  <div className="story-list-item">
+                    <strong>Employees</strong>
+                    <p>Clock in, check schedules, request time off, and stay aligned with the team.</p>
+                  </div>
+                </div>
+              </aside>
+            </section>
+          </section>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <section className="brand-banner panel">
         <div className="brand-lockup">
           <img className="brand-mark" src="/miseiq-mark.svg" alt="MiseIQ brand mark" />
           <div>
-            <p className="eyebrow">MiseIQ Brand System</p>
-            <h2>MiseIQ Workforce</h2>
+            <p className="eyebrow">Restaurant Workforce Console</p>
+            <h2>MiseIQ Workforce Control Center</h2>
           </div>
         </div>
         <p className="brand-copy">
-          Styled to match your MiseIQ site with a deep navy foundation, warm parchment surfaces, gold accents, and
-          serif-led headings for a more premium hospitality operations feel.
+          Your private operations workspace for employee clock-in, manager scheduling, labor review, and the future
+          handoff into the broader MiseIQ financial stack.
         </p>
       </section>
 
