@@ -51,6 +51,9 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
+  padding: 28px 30px;
+  background: linear-gradient(135deg, rgba(255, 250, 242, 0.98), rgba(242, 232, 211, 0.95));
+  border-color: rgba(186, 154, 96, 0.28);
 }
 
 .public-brand-lockup {
@@ -68,11 +71,33 @@ textarea {
   height: auto;
 }
 
+.public-nav-shell {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 18px;
+  min-width: 300px;
+  min-height: 120px;
+}
+
+.public-nav-shell::before {
+  content: "";
+  width: 120px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(26, 31, 40, 0.7);
+}
+
 .public-nav,
 .marketing-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.public-nav {
+  justify-content: flex-end;
 }
 
 .story-list {
@@ -112,17 +137,10 @@ textarea {
 
 .marketing-hero-card {
   background:
-    radial-gradient(circle at top right, rgba(196, 154, 86, 0.16), transparent 32%),
-    linear-gradient(145deg, rgba(17, 33, 59, 0.98), rgba(32, 52, 84, 0.94));
+    radial-gradient(circle at top right, rgba(212, 174, 104, 0.18), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(255, 248, 230, 0.08), transparent 30%),
+    linear-gradient(145deg, rgba(44, 37, 31, 0.98), rgba(29, 34, 44, 0.96));
   color: var(--miseiq-cream);
-}
-
-.hero-glow-mark {
-  display: block;
-  width: 82px;
-  height: 82px;
-  margin-bottom: 14px;
-  object-fit: contain;
 }
 
 .marketing-login-card,
@@ -178,12 +196,6 @@ textarea {
   justify-items: stretch;
 }
 
-.story-panel-mark {
-  width: min(180px, 100%);
-  height: auto;
-  justify-self: center;
-}
-
 .story-panel-highlights {
   display: grid;
   gap: 12px;
@@ -208,6 +220,14 @@ textarea {
 
 .story-panel .marketing-lede {
   color: #4f5b6d;
+}
+
+.public-brand-stack .eyebrow,
+.story-panel .eyebrow,
+.marketing-login-card .eyebrow,
+.feature-card .eyebrow,
+.request-access-panel .eyebrow {
+  color: #8f6627;
 }
 
 .public-stat-row,
@@ -1331,10 +1351,6 @@ textarea {
     width: min(340px, 72vw);
   }
 
-  .story-panel-mark {
-    width: 128px;
-  }
-
   .schedule-week-meta {
     justify-items: start;
   }
@@ -1354,9 +1370,18 @@ textarea {
     padding: 24px;
   }
 
-  .hero-glow-mark {
-    width: 68px;
-    height: 68px;
+  .public-header {
+    padding: 24px;
+  }
+
+  .public-nav-shell {
+    min-width: 100%;
+    min-height: auto;
+    align-items: flex-start;
+  }
+
+  .public-nav-shell::before {
+    width: 96px;
   }
 
   .hero-copy,

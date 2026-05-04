@@ -2203,29 +2203,30 @@ export default function App() {
               <p className="eyebrow">Powered by MiseIQ</p>
             </div>
           </div>
-          <nav className="public-nav" aria-label="Public site navigation">
-            <button
-              className={publicPage === "login" ? "tab active-tab" : "tab"}
-              type="button"
-              onClick={() => navigatePublicPage("login")}
-            >
-              Restaurant Login
-            </button>
-            <button
-              className={publicPage === "about" ? "tab active-tab" : "tab"}
-              type="button"
-              onClick={() => navigatePublicPage("about")}
-            >
-              Learn More
-            </button>
-          </nav>
+          <div className="public-nav-shell">
+            <nav className="public-nav" aria-label="Public site navigation">
+              <button
+                className={publicPage === "login" ? "tab active-tab" : "tab"}
+                type="button"
+                onClick={() => navigatePublicPage("login")}
+              >
+                Restaurant Login
+              </button>
+              <button
+                className={publicPage === "about" ? "tab active-tab" : "tab"}
+                type="button"
+                onClick={() => navigatePublicPage("about")}
+              >
+                Learn More
+              </button>
+            </nav>
+          </div>
         </header>
 
         {publicPage === "login" ? (
           <>
             <section className="public-hero">
               <article className="marketing-hero-card">
-                <img className="hero-glow-mark" src="/labortrackiq-glow-mark.png" alt="" aria-hidden="true" />
                 <p className="eyebrow">Restaurant Workforce Platform</p>
                 <h1>Scheduling, time clock, and labor control for restaurant teams.</h1>
                 <p className="marketing-lede">
@@ -2331,7 +2332,6 @@ export default function App() {
                   </p>
                 </div>
                 <div className="story-panel-side">
-                  <img className="story-panel-mark" src="/labortrackiq-glow-mark.png" alt="" aria-hidden="true" />
                   <div className="story-panel-highlights">
                     <div className="story-highlight-card">
                       <strong>One workforce hub</strong>
