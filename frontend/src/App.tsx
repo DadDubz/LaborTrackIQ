@@ -2355,15 +2355,22 @@ export default function App() {
               </article>
 
               <article className="feature-card">
-                <p className="eyebrow">MiseIQ Connection</p>
-                <h3>Built to connect with MiseIQ</h3>
-                <p>LaborTrackIQ tracks scheduled hours, worked time, and manager-approved payroll activity.</p>
-                <p>All labor data can flow into MiseIQ so restaurant financial reporting and labor reporting stay connected in one system.</p>
-                <div className="feature-card-actions">
-                  <a className="primary-button external-link-button" href="https://about.miseiq.online" target="_blank" rel="noreferrer">
+                <div className="feature-card-header-row">
+                  <div className="feature-card-header-copy">
+                    <p className="eyebrow">MiseIQ Connection</p>
+                    <h3>Built to connect with MiseIQ</h3>
+                  </div>
+                  <a
+                    className="primary-button external-link-button feature-card-link-button"
+                    href="https://about.miseiq.online"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     Visit MiseIQ
                   </a>
                 </div>
+                <p>LaborTrackIQ tracks scheduled hours, worked time, and manager-approved payroll activity.</p>
+                <p>All labor data can flow into MiseIQ so restaurant financial reporting and labor reporting stay connected in one system.</p>
               </article>
 
               <article className="feature-card">
