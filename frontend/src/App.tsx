@@ -2200,8 +2200,8 @@ export default function App() {
           <div className="brand-lockup">
             <img className="brand-mark" src="/miseiq-mark.svg" alt="MiseIQ brand mark" />
             <div>
-              <p className="eyebrow">MiseIQ Workforce</p>
-              <h2>Restaurant Labor, Scheduling, and Time Clock</h2>
+              <p className="eyebrow">Powered by MiseIQ</p>
+              <h2>LaborTrackIQ</h2>
             </div>
           </div>
           <nav className="public-nav" aria-label="Public site navigation">
@@ -2229,7 +2229,7 @@ export default function App() {
                 <p className="eyebrow">Restaurant Workforce Platform</p>
                 <h1>Scheduling, time clock, and labor control for restaurant teams.</h1>
                 <p className="marketing-lede">
-                  MiseIQ Workforce brings employee clock-in, manager scheduling, request handling, and payroll-ready labor
+                  LaborTrackIQ brings employee clock-in, manager scheduling, request handling, and payroll-ready labor
                   visibility into one restaurant operations platform.
                 </p>
                 <div className="marketing-actions">
@@ -2250,8 +2250,8 @@ export default function App() {
                     <p>Manager tools for coverage planning, publishing, and approvals.</p>
                   </div>
                   <div className="public-stat-card">
-                    <strong>MiseIQ Ready</strong>
-                    <p>Labor data prepared for reporting and future MiseIQ financial integration.</p>
+                    <strong>QuickBooks Payroll</strong>
+                    <p>Restaurants can connect to QuickBooks from the clock-in app for easier payroll.</p>
                   </div>
                 </div>
               </article>
@@ -2262,7 +2262,6 @@ export default function App() {
                     <p className="eyebrow">Restaurant Login</p>
                     <h3>Sign in to your workforce console</h3>
                   </div>
-                  <span className="status-strip public-status-pill">{setupMessage}</span>
                 </div>
                 <p className="muted-copy">
                   Owners, admins, and managers log in here to access scheduling, labor tools, and the employee clock terminal.
@@ -2291,10 +2290,6 @@ export default function App() {
                 </form>
                 {adminError ? <div className="inline-error">{adminError}</div> : null}
                 {adminMessage ? <div className="inline-message">{adminMessage}</div> : null}
-                <div className="login-support-card">
-                  <strong>What restaurants get after login</strong>
-                  <p>Employee clock-in, scheduling, time-off approvals, shift changes, payroll review, and integrations.</p>
-                </div>
               </aside>
             </section>
 
@@ -2314,10 +2309,11 @@ export default function App() {
                 </p>
               </article>
               <article className="feature-card">
-                <p className="eyebrow">MiseIQ Integration</p>
-                <h3>Built to connect with your financial tools</h3>
+                <p className="eyebrow">MiseIQ + QuickBooks</p>
+                <h3>Built for connected restaurant operations</h3>
                 <p>
-                  Labor hours, approvals, and published schedules can support reporting and financial workflows in MiseIQ.
+                  LaborTrackIQ connects cleanly with MiseIQ so labor data can flow into your financial app, and restaurants
+                  can connect directly to QuickBooks for easier payroll processing.
                 </p>
               </article>
             </section>
@@ -2325,10 +2321,10 @@ export default function App() {
         ) : (
           <section className="info-page-shell">
             <article className="story-panel">
-              <p className="eyebrow">About MiseIQ Workforce</p>
+              <p className="eyebrow">About LaborTrackIQ</p>
               <h1>Restaurant labor tools for scheduling, time tracking, and team coordination.</h1>
               <p className="marketing-lede">
-                Restaurants can use MiseIQ Workforce to manage team schedules, employee clock-in, request handling, and labor
+                Restaurants can use LaborTrackIQ to manage team schedules, employee clock-in, request handling, and labor
                 activity from one workspace.
               </p>
             </article>
@@ -2343,9 +2339,9 @@ export default function App() {
 
               <article className="feature-card">
                 <p className="eyebrow">MiseIQ Connection</p>
-                <h3>Labor data ready for reporting</h3>
-                <p>MiseIQ Workforce tracks scheduled hours, worked time, and manager-approved payroll activity.</p>
-                <p>This creates a clean labor record that can connect into broader reporting and financial workflows in MiseIQ.</p>
+                <h3>Works best with MiseIQ and QuickBooks</h3>
+                <p>LaborTrackIQ tracks scheduled hours, worked time, and manager-approved payroll activity.</p>
+                <p>All labor data can flow into MiseIQ for financial reporting, and restaurants can connect directly to QuickBooks for easier payroll.</p>
               </article>
             </div>
 
@@ -2452,8 +2448,8 @@ export default function App() {
         <div className="brand-lockup">
           <img className="brand-mark" src="/miseiq-mark.svg" alt="MiseIQ brand mark" />
           <div>
-            <p className="eyebrow">Restaurant Workforce Console</p>
-            <h2>MiseIQ Workforce Control Center</h2>
+            <p className="eyebrow">Powered by MiseIQ</p>
+            <h2>LaborTrackIQ Control Center</h2>
           </div>
         </div>
         <p className="brand-copy">
@@ -2469,7 +2465,7 @@ export default function App() {
               <div className="inline-brand">
                 <img className="inline-brand-mark" src="/miseiq-mark.svg" alt="MiseIQ brand mark" />
               </div>
-              <p className="eyebrow">MiseIQ Workforce</p>
+              <p className="eyebrow">LaborTrackIQ</p>
               <h1 className="kiosk-title">Clock In to the Shift Board</h1>
               <p className="hero-text">
                 Employees use the keypad to enter their employee number and PIN. After clock-in, they land on their
@@ -2540,9 +2536,9 @@ export default function App() {
           </div>
         ) : (
             <div className="employee-portal">
-              <div className="employee-portal-header">
+            <div className="employee-portal-header">
                 <div>
-                <p className="eyebrow">MiseIQ Workforce</p>
+                <p className="eyebrow">LaborTrackIQ</p>
                 <h1 className="kiosk-title">{employeePortal.employee_name}</h1>
                 <p className="hero-text">{employeeClockMessage}</p>
               </div>
