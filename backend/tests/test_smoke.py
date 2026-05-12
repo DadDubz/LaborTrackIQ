@@ -16,6 +16,7 @@ if str(BACKEND_DIR) not in sys.path:
 _TEMP_DIR = tempfile.TemporaryDirectory()
 os.environ["DATABASE_URL"] = f"sqlite:///{Path(_TEMP_DIR.name) / 'test.db'}"
 os.environ["SECRET_KEY"] = "labortrackiq-test-secret"
+os.environ["ALLOW_DEMO_BOOTSTRAP"] = "true"
 
 from fastapi.testclient import TestClient
 
@@ -23,6 +24,7 @@ from app.core.config import settings
 from app.db.session import Base, engine
 from app.main import app, ensure_schedule_shift_publish_columns, reset_rate_limit_state
 from app.models import (
+    AccessRequest,
     EmployeeProfile,
     IntegrationConnection,
     IntegrationProvider,
@@ -179,6 +181,42 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             )
             self.assertIsNotNone(admin)
             self.assertEqual(admin.full_name, "Trimmed Admin")
+
+    def test_access_request_submission_persists_trimmed_lead(self):
+        response = self.client.post(
+            "/api/access-requests",
+            json={
+                "restaurant_name": "  Harbor Grill Group  ",
+                "contact_name": "  Jamie Rivera  ",
+                "email": "jamie@example.com",
+                "locations": 3,
+                "current_tools": "  7shifts + spreadsheets  ",
+                "notes": "  Need better scheduling and payroll visibility.  ",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["restaurant_name"], "Harbor Grill Group")
+        self.assertEqual(payload["contact_name"], "Jamie Rivera")
+        self.assertEqual(payload["status"], "new")
+        self.assertEqual(payload["source"], "website")
+
+        with Session(engine) as db:
+            access_request = db.scalar(select(AccessRequest).where(AccessRequest.email == "jamie@example.com"))
+            self.assertIsNotNone(access_request)
+            self.assertEqual(access_request.restaurant_name, "Harbor Grill Group")
+            self.assertEqual(access_request.contact_name, "Jamie Rivera")
+            self.assertEqual(access_request.current_tools, "7shifts + spreadsheets")
+            self.assertEqual(access_request.notes, "Need better scheduling and payroll visibility.")
+
+    def test_demo_bootstrap_endpoint_is_disabled_when_setting_off(self):
+        original_bootstrap = settings.allow_demo_bootstrap
+        try:
+            settings.allow_demo_bootstrap = False
+            response = self.client.post("/api/bootstrap/demo")
+            self.assertEqual(response.status_code, 403, response.text)
+        finally:
+            settings.allow_demo_bootstrap = original_bootstrap
 
     def test_login_rate_limit_returns_429_when_exceeded(self):
         original_limit = settings.auth_rate_limit

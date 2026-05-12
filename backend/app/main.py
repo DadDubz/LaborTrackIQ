@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import Base, engine, get_db
 from app.models import (
+    AccessRequest,
     AuditEvent,
     EmployeeAvailabilityRequest,
     EmployeeProfile,
@@ -42,6 +43,8 @@ from app.models import (
     UserRole,
 )
 from app.schemas import (
+    AccessRequestCreate,
+    AccessRequestRead,
     AuditEventRead,
     AvailabilityRequestCreate,
     AvailabilityRequestRead,
@@ -172,6 +175,45 @@ async def enforce_request_size_limit(request: Request, call_next):
         except ValueError:
             return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header."})
     return await call_next(request)
+
+
+@app.post(f"{settings.api_prefix}/access-requests", response_model=AccessRequestRead)
+def create_access_request(
+    payload: AccessRequestCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _enforce_rate_limit(
+        "access_request",
+        _request_client_ip(request),
+        settings.access_request_rate_limit,
+        settings.access_request_rate_window_seconds,
+    )
+
+    restaurant_name = payload.restaurant_name.strip()
+    contact_name = payload.contact_name.strip()
+    current_tools = payload.current_tools.strip() if payload.current_tools else None
+    notes = payload.notes.strip() if payload.notes else None
+
+    if not restaurant_name:
+        raise HTTPException(status_code=400, detail="restaurant_name is required.")
+    if not contact_name:
+        raise HTTPException(status_code=400, detail="contact_name is required.")
+
+    access_request = AccessRequest(
+        restaurant_name=restaurant_name,
+        contact_name=contact_name,
+        email=payload.email,
+        locations=payload.locations,
+        current_tools=current_tools or None,
+        notes=notes or None,
+        status="new",
+        source="website",
+    )
+    db.add(access_request)
+    db.commit()
+    db.refresh(access_request)
+    return access_request
 
 
 _RATE_LIMIT_LOCK = threading.Lock()

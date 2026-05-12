@@ -79,6 +79,21 @@ class Organization(Base):
     shift_change_requests: Mapped[list["ShiftChangeRequest"]] = relationship(back_populates="organization")
 
 
+class AccessRequest(Base):
+    __tablename__ = "access_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    restaurant_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    contact_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    locations: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    current_tools: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="new")
+    source: Mapped[str] = mapped_column(String(64), default="website")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (UniqueConstraint("organization_id", "email", name="uq_users_org_email"),)

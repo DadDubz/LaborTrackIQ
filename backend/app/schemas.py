@@ -25,6 +25,30 @@ class OrganizationCreate(BaseModel):
     admin_password: str = Field(min_length=8, max_length=128)
 
 
+class AccessRequestCreate(BaseModel):
+    restaurant_name: str = Field(min_length=1, max_length=255)
+    contact_name: str = Field(min_length=1, max_length=255)
+    email: EmailStr
+    locations: Optional[int] = Field(default=None, ge=1, le=10000)
+    current_tools: Optional[str] = Field(default=None, max_length=500)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class AccessRequestRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    restaurant_name: str
+    contact_name: str
+    email: str
+    locations: Optional[int]
+    current_tools: Optional[str]
+    notes: Optional[str]
+    status: str
+    source: str
+    created_at: datetime
+
+
 class UserCreate(BaseModel):
     organization_id: int
     full_name: str = Field(min_length=1, max_length=255)

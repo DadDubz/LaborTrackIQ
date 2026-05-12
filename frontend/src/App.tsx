@@ -59,6 +59,19 @@ type LoginResponse = {
   user: User;
 };
 
+type AccessRequestResponse = {
+  id: number;
+  restaurant_name: string;
+  contact_name: string;
+  email: string;
+  locations: number | null;
+  current_tools: string | null;
+  notes: string | null;
+  status: string;
+  source: string;
+  created_at: string;
+};
+
 type DashboardSummary = {
   organization_id: number;
   active_employees: number;
@@ -246,8 +259,7 @@ type EmployeeRequestQueueTab = "pending" | "approved";
 type RequestBoardTab = "time_off" | "shift_changes";
 type PublicPage = "login" | "about";
 
-const DEMO_BOOTSTRAP_ENABLED =
-  import.meta.env.DEV || String(import.meta.env.VITE_ENABLE_DEMO_BOOTSTRAP ?? "").toLowerCase() === "true";
+const DEMO_BOOTSTRAP_ENABLED = String(import.meta.env.VITE_ENABLE_DEMO_BOOTSTRAP ?? "").toLowerCase() === "true";
 const API_BASE = String(import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api").replace(/\/+$/, "");
 const SHIFT_TEMPLATES = [
   { key: "morning", label: "Morning", start: "08:00", end: "14:00", role: "Morning Shift" },
@@ -495,7 +507,7 @@ export default function App() {
   const [setupMessage, setSetupMessage] = useState(
     DEMO_BOOTSTRAP_ENABLED
       ? "Preparing demo workspace..."
-      : "Demo bootstrap is off. Sign in with your organization credentials.",
+      : "Sign in with your organization credentials to open the workforce console.",
   );
   const [exportSummary, setExportSummary] = useState<QuickBooksActionResponse["export_summary"] | null>(null);
   const [quickBooksAuth, setQuickBooksAuth] = useState<QuickBooksAuthorization | null>(null);
@@ -596,6 +608,7 @@ export default function App() {
   });
   const [accessRequestError, setAccessRequestError] = useState("");
   const [accessRequestMessage, setAccessRequestMessage] = useState("");
+  const [isAccessRequestSubmitting, setIsAccessRequestSubmitting] = useState(false);
 
   useEffect(() => {
     const storedToken = window.localStorage.getItem("labortrackiq_token");
@@ -670,6 +683,7 @@ export default function App() {
         setToken("");
         window.localStorage.removeItem("labortrackiq_token");
         window.localStorage.removeItem("labortrackiq_user");
+        window.localStorage.removeItem("labortrackiq_org");
       }
       throw new Error(parseApiErrorDetail(data, raw || "Request failed."));
     }
@@ -1275,7 +1289,7 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function handleAccessRequestSubmit(event: FormEvent) {
+  async function handleAccessRequestSubmit(event: FormEvent) {
     event.preventDefault();
     setAccessRequestError("");
     setAccessRequestMessage("");
@@ -1283,6 +1297,10 @@ export default function App() {
     const restaurantName = accessRequestForm.restaurant_name.trim();
     const contactName = accessRequestForm.contact_name.trim();
     const email = accessRequestForm.email.trim();
+    const currentTools = accessRequestForm.current_tools.trim();
+    const notes = accessRequestForm.notes.trim();
+    const rawLocations = accessRequestForm.locations.trim();
+    const parsedLocations = rawLocations ? Number(rawLocations) : null;
 
     if (!restaurantName) {
       setAccessRequestError("Please enter the restaurant or group name.");
@@ -1296,16 +1314,42 @@ export default function App() {
       setAccessRequestError("Please enter a valid contact email.");
       return;
     }
+    if (rawLocations && (!Number.isInteger(parsedLocations) || Number(parsedLocations) <= 0)) {
+      setAccessRequestError("Please enter a valid number of locations.");
+      return;
+    }
 
-    setAccessRequestMessage(`Thanks, ${contactName}. Your access request for ${restaurantName} has been received.`);
-    setAccessRequestForm({
-      restaurant_name: "",
-      contact_name: "",
-      email: "",
-      locations: "1",
-      current_tools: "",
-      notes: "",
-    });
+    setIsAccessRequestSubmitting(true);
+    try {
+      const response = (await apiFetch(
+        "/access-requests",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            restaurant_name: restaurantName,
+            contact_name: contactName,
+            email,
+            locations: parsedLocations,
+            current_tools: currentTools || null,
+            notes: notes || null,
+          }),
+        },
+        "",
+      )) as AccessRequestResponse;
+      setAccessRequestMessage(`Thanks, ${response.contact_name}. Your access request for ${response.restaurant_name} has been received.`);
+      setAccessRequestForm({
+        restaurant_name: "",
+        contact_name: "",
+        email: "",
+        locations: "1",
+        current_tools: "",
+        notes: "",
+      });
+    } catch (error) {
+      setAccessRequestError(error instanceof Error ? error.message : "Unable to submit your access request.");
+    } finally {
+      setIsAccessRequestSubmitting(false);
+    }
   }
 
   async function handleSubmitEmployee(event: FormEvent) {
@@ -2273,17 +2317,18 @@ export default function App() {
                     <input
                       type="text"
                       inputMode="numeric"
+                      autoComplete="off"
                       value={organizationId}
                       onChange={(event) => setOrganizationId(event.target.value)}
                     />
                   </label>
                   <label>
                     Admin or Manager Email
-                    <input type="email" value={adminEmail} maxLength={255} onChange={(event) => setAdminEmail(event.target.value)} />
+                    <input type="email" autoComplete="username" value={adminEmail} maxLength={255} onChange={(event) => setAdminEmail(event.target.value)} />
                   </label>
                   <label>
                     Password
-                    <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} />
+                    <input type="password" autoComplete="current-password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} />
                   </label>
                   <button className="primary-button" type="submit" disabled={!adminLoginIsValid}>
                     Enter Workforce Console
@@ -2339,7 +2384,7 @@ export default function App() {
                     </div>
                     <div className="story-highlight-card">
                       <strong>Connected operations</strong>
-                      <p>MiseIQ reporting and QuickBooks payroll support built into the roadmap.</p>
+                      <p>MiseIQ reporting and QuickBooks payroll workflows can stay aligned in one connected labor system.</p>
                     </div>
                   </div>
                 </div>
@@ -2403,6 +2448,8 @@ export default function App() {
                       Restaurant or Group Name
                       <input
                         type="text"
+                        autoComplete="organization"
+                        maxLength={255}
                         value={accessRequestForm.restaurant_name}
                         onChange={(event) => setAccessRequestForm({ ...accessRequestForm, restaurant_name: event.target.value })}
                       />
@@ -2411,6 +2458,8 @@ export default function App() {
                       Best Contact Name
                       <input
                         type="text"
+                        autoComplete="name"
+                        maxLength={255}
                         value={accessRequestForm.contact_name}
                         onChange={(event) => setAccessRequestForm({ ...accessRequestForm, contact_name: event.target.value })}
                       />
@@ -2419,6 +2468,8 @@ export default function App() {
                       Contact Email
                       <input
                         type="email"
+                        autoComplete="email"
+                        maxLength={255}
                         value={accessRequestForm.email}
                         onChange={(event) => setAccessRequestForm({ ...accessRequestForm, email: event.target.value })}
                       />
@@ -2426,7 +2477,10 @@ export default function App() {
                     <label>
                       Number of Locations
                       <input
-                        type="text"
+                        type="number"
+                        min="1"
+                        max="10000"
+                        inputMode="numeric"
                         value={accessRequestForm.locations}
                         onChange={(event) => setAccessRequestForm({ ...accessRequestForm, locations: event.target.value })}
                       />
@@ -2434,22 +2488,24 @@ export default function App() {
                   </div>
                   <label>
                     Current Scheduling or Payroll Tools
-                    <input
-                      type="text"
-                      value={accessRequestForm.current_tools}
-                      onChange={(event) => setAccessRequestForm({ ...accessRequestForm, current_tools: event.target.value })}
-                    />
+                      <input
+                        type="text"
+                        maxLength={500}
+                        value={accessRequestForm.current_tools}
+                        onChange={(event) => setAccessRequestForm({ ...accessRequestForm, current_tools: event.target.value })}
+                      />
                   </label>
                   <label>
                     What do you want help with first?
                     <textarea
+                      maxLength={2000}
                       value={accessRequestForm.notes}
                       onChange={(event) => setAccessRequestForm({ ...accessRequestForm, notes: event.target.value })}
                     />
                   </label>
                   <div className="action-row">
-                    <button className="primary-button" type="submit">
-                      Submit Request
+                    <button className="primary-button" type="submit" disabled={isAccessRequestSubmitting}>
+                      {isAccessRequestSubmitting ? "Submitting..." : "Submit Request"}
                     </button>
                     <button className="ghost-button" type="button" onClick={() => navigatePublicPage("login")}>
                       Back To Login
@@ -2496,8 +2552,8 @@ export default function App() {
           </div>
         </div>
         <p className="brand-copy">
-          Your private operations workspace for employee clock-in, manager scheduling, labor review, and the future
-          handoff into the broader MiseIQ financial stack.
+          Your private operations workspace for employee clock-in, manager scheduling, labor review, and connected
+          payroll-ready reporting.
         </p>
       </section>
 
@@ -2515,10 +2571,10 @@ export default function App() {
                 home screen with notes, current schedule, full calendar, and request-off tools.
               </p>
               <div className="brand-illustration-card">
-                <img className="brand-illustration" src="/miseiq-ops-illustration.svg" alt="MiseIQ operations illustration" />
+                <img className="brand-illustration" src="/labortrackiq-glow-mark.png" alt="LaborTrackIQ workforce illustration" />
                 <div className="brand-illustration-copy">
-                  <strong>Shift intelligence, branded for MiseIQ</strong>
-                  <p>Labor visibility, schedules, request management, and clock activity in the same premium operating system feel.</p>
+                  <strong>One workforce hub for every shift</strong>
+                  <p>Labor visibility, schedules, request management, and clock activity in one polished restaurant operations workspace.</p>
                 </div>
               </div>
               <div className="status-strip">{setupMessage}</div>
@@ -3031,7 +3087,7 @@ export default function App() {
       <section className="dashboard-grid">
         <article className="panel admin-panel admin-panel-expanded">
           <div className="panel-heading">
-            <p className="eyebrow">MiseIQ Admin</p>
+            <p className="eyebrow">LaborTrackIQ Admin</p>
             <h3>Workforce Operations Console</h3>
           </div>
 
@@ -3040,22 +3096,22 @@ export default function App() {
               <form className="admin-form" onSubmit={handleAdminLogin}>
                 <label>
                   Admin Email
-                  <input type="email" value={adminEmail} maxLength={255} onChange={(event) => setAdminEmail(event.target.value)} />
+                  <input type="email" autoComplete="username" value={adminEmail} maxLength={255} onChange={(event) => setAdminEmail(event.target.value)} />
                 </label>
                 <label>
                   Password
-                  <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} />
+                  <input type="password" autoComplete="current-password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} />
                 </label>
                 <button className="primary-button" type="submit" disabled={!adminLoginIsValid}>
                   Admin Login
                 </button>
               </form>
               <aside className="admin-brand-panel">
-                <img className="admin-brand-illustration" src="/miseiq-ops-illustration.svg" alt="MiseIQ operations illustration" />
-                <p className="eyebrow">MiseIQ Control Layer</p>
+                <img className="admin-brand-illustration" src="/labortrackiq-glow-mark.png" alt="LaborTrackIQ workforce illustration" />
+                <p className="eyebrow">Operations Console</p>
                 <h4>Owner-grade workforce visibility</h4>
                 <p className="muted-copy">
-                  Review labor planning, request queues, clock activity, and publishing workflows in a dashboard that matches the rest of your MiseIQ brand.
+                  Review labor planning, request queues, clock activity, and publishing workflows in one restaurant-ready dashboard.
                 </p>
               </aside>
             </div>
