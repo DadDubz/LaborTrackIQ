@@ -49,6 +49,24 @@ class AccessRequestRead(BaseModel):
     created_at: datetime
 
 
+class LoginHelpRequestCreate(BaseModel):
+    organization_reference: Optional[str] = Field(default=None, max_length=255)
+    email: EmailStr
+    details: str = Field(min_length=1, max_length=1000)
+
+
+class LoginHelpRequestRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    organization_reference: Optional[str]
+    email: str
+    details: str
+    status: str
+    source: str
+    created_at: datetime
+
+
 class UserCreate(BaseModel):
     organization_id: int
     full_name: str = Field(min_length=1, max_length=255)

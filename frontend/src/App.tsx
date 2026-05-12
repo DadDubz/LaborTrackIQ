@@ -72,6 +72,16 @@ type AccessRequestResponse = {
   created_at: string;
 };
 
+type LoginHelpRequestResponse = {
+  id: number;
+  organization_reference: string | null;
+  email: string;
+  details: string;
+  status: string;
+  source: string;
+  created_at: string;
+};
+
 type DashboardSummary = {
   organization_id: number;
   active_employees: number;
@@ -619,6 +629,15 @@ export default function App() {
   const [accessRequestMessage, setAccessRequestMessage] = useState("");
   const [isAccessRequestSubmitting, setIsAccessRequestSubmitting] = useState(false);
   const [accessRequestSuccess, setAccessRequestSuccess] = useState<AccessRequestResponse | null>(null);
+  const [loginHelpForm, setLoginHelpForm] = useState({
+    organization_reference: "",
+    email: "",
+    details: "",
+  });
+  const [loginHelpError, setLoginHelpError] = useState("");
+  const [loginHelpMessage, setLoginHelpMessage] = useState("");
+  const [isLoginHelpSubmitting, setIsLoginHelpSubmitting] = useState(false);
+  const [loginHelpSuccess, setLoginHelpSuccess] = useState<LoginHelpRequestResponse | null>(null);
 
   useEffect(() => {
     const storedToken = window.localStorage.getItem("labortrackiq_token");
@@ -1367,6 +1386,53 @@ export default function App() {
       setAccessRequestError(error instanceof Error ? error.message : "Unable to submit your access request.");
     } finally {
       setIsAccessRequestSubmitting(false);
+    }
+  }
+
+  async function handleLoginHelpSubmit(event: FormEvent) {
+    event.preventDefault();
+    setLoginHelpError("");
+    setLoginHelpMessage("");
+    setLoginHelpSuccess(null);
+
+    const organizationReference = loginHelpForm.organization_reference.trim() || organizationId.trim();
+    const email = loginHelpForm.email.trim() || adminEmail.trim();
+    const details = loginHelpForm.details.trim();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setLoginHelpError("Please enter a valid email for login support.");
+      return;
+    }
+    if (!details) {
+      setLoginHelpError("Please tell us what you need help with.");
+      return;
+    }
+
+    setIsLoginHelpSubmitting(true);
+    try {
+      const response = (await apiFetch(
+        "/login-help-requests",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            organization_reference: organizationReference || null,
+            email,
+            details,
+          }),
+        },
+        "",
+      )) as LoginHelpRequestResponse;
+      setLoginHelpSuccess(response);
+      setLoginHelpMessage(`Thanks. We received your login help request for ${response.email}.`);
+      setLoginHelpForm({
+        organization_reference: organizationReference,
+        email,
+        details: "",
+      });
+    } catch (error) {
+      setLoginHelpError(error instanceof Error ? error.message : "Unable to submit your login help request.");
+    } finally {
+      setIsLoginHelpSubmitting(false);
     }
   }
 
@@ -2352,8 +2418,70 @@ export default function App() {
                     Enter Workforce Console
                   </button>
                 </form>
+                <div className="login-help-panel">
+                  <div className="login-help-header">
+                    <div>
+                      <p className="eyebrow">Need Help Signing In?</p>
+                      <h4>Request credential support</h4>
+                    </div>
+                  </div>
+                  {loginHelpSuccess ? (
+                    <div className="login-help-success">
+                      <p>
+                        We received your request and will follow up at <strong>{loginHelpSuccess.email}</strong>.
+                      </p>
+                      <p>If you need to add anything else, email <a href="mailto:info@labortrackiq.com">info@labortrackiq.com</a>.</p>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={() => {
+                          setLoginHelpSuccess(null);
+                          setLoginHelpMessage("");
+                        }}
+                      >
+                        Submit Another Help Request
+                      </button>
+                    </div>
+                  ) : (
+                    <form className="public-form compact-form" onSubmit={handleLoginHelpSubmit}>
+                      <label>
+                        Restaurant / Organization ID
+                        <input
+                          type="text"
+                          autoComplete="off"
+                          maxLength={255}
+                          value={loginHelpForm.organization_reference}
+                          onChange={(event) => setLoginHelpForm({ ...loginHelpForm, organization_reference: event.target.value })}
+                        />
+                      </label>
+                      <label>
+                        Contact Email
+                        <input
+                          type="email"
+                          autoComplete="email"
+                          maxLength={255}
+                          value={loginHelpForm.email}
+                          onChange={(event) => setLoginHelpForm({ ...loginHelpForm, email: event.target.value })}
+                        />
+                      </label>
+                      <label>
+                        What do you need help with?
+                        <textarea
+                          maxLength={1000}
+                          value={loginHelpForm.details}
+                          onChange={(event) => setLoginHelpForm({ ...loginHelpForm, details: event.target.value })}
+                        />
+                      </label>
+                      <button className="ghost-button" type="submit" disabled={isLoginHelpSubmitting}>
+                        {isLoginHelpSubmitting ? "Sending..." : "Request Login Help"}
+                      </button>
+                    </form>
+                  )}
+                </div>
                 {adminError ? <div className="inline-error">{adminError}</div> : null}
                 {adminMessage ? <div className="inline-message">{adminMessage}</div> : null}
+                {loginHelpError ? <div className="inline-error">{loginHelpError}</div> : null}
+                {loginHelpMessage && !loginHelpSuccess ? <div className="inline-message">{loginHelpMessage}</div> : null}
               </aside>
             </section>
 

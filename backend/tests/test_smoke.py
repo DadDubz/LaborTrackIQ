@@ -29,6 +29,7 @@ from app.models import (
     IntegrationConnection,
     IntegrationProvider,
     IntegrationStatus,
+    LoginHelpRequest,
     Organization,
     ScheduleShift,
     ShiftChangeRequest,
@@ -228,6 +229,49 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
         notified_request = mock_notify.call_args.args[0]
         self.assertEqual(notified_request.restaurant_name, "Golden Fork Hospitality")
         self.assertEqual(notified_request.email, "morgan@example.com")
+
+    def test_login_help_request_submission_persists_trimmed_request(self):
+        response = self.client.post(
+            "/api/login-help-requests",
+            json={
+                "organization_reference": "  Harbor Grill / Org 12  ",
+                "email": "owner@example.com",
+                "details": "  We cannot access the owner login and need a password reset.  ",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["organization_reference"], "Harbor Grill / Org 12")
+        self.assertEqual(payload["status"], "new")
+        self.assertEqual(payload["source"], "website")
+
+        with Session(engine) as db:
+            login_help_request = db.scalar(
+                select(LoginHelpRequest).where(LoginHelpRequest.email == "owner@example.com")
+            )
+            self.assertIsNotNone(login_help_request)
+            self.assertEqual(login_help_request.organization_reference, "Harbor Grill / Org 12")
+            self.assertEqual(
+                login_help_request.details,
+                "We cannot access the owner login and need a password reset.",
+            )
+
+    def test_login_help_request_submission_attempts_notification_email(self):
+        with patch("app.main.send_login_help_request_notification") as mock_notify:
+            response = self.client.post(
+                "/api/login-help-requests",
+                json={
+                    "organization_reference": "Org 4",
+                    "email": "manager@example.com",
+                    "details": "Need help signing in.",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        mock_notify.assert_called_once()
+        notified_request = mock_notify.call_args.args[0]
+        self.assertEqual(notified_request.organization_reference, "Org 4")
+        self.assertEqual(notified_request.email, "manager@example.com")
 
     def test_demo_bootstrap_endpoint_is_disabled_when_setting_off(self):
         original_bootstrap = settings.allow_demo_bootstrap

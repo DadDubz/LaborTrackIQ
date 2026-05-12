@@ -26,6 +26,7 @@ from app.models import (
     IntegrationConnection,
     IntegrationProvider,
     IntegrationStatus,
+    LoginHelpRequest,
     ManagerNote,
     Organization,
     ReportSubscription,
@@ -60,6 +61,8 @@ from app.schemas import (
     EmployeeSelfProfileUpdate,
     IntegrationConnectionCreate,
     IntegrationConnectionRead,
+    LoginHelpRequestCreate,
+    LoginHelpRequestRead,
     LoginRequest,
     LoginResponse,
     NoteCreate,
@@ -100,7 +103,7 @@ from app.schemas import (
     UserUpdate,
 )
 from app.security import create_access_token, decode_access_token, hash_password, seal_secret, unseal_secret, verify_password
-from app.services.notifications import send_access_request_notification
+from app.services.notifications import send_access_request_notification, send_login_help_request_notification
 from app.services.quickbooks import (
     build_authorization_url,
     exchange_code_for_tokens,
@@ -225,6 +228,44 @@ def create_access_request(
             access_request.id,
         )
     return access_request
+
+
+@app.post(f"{settings.api_prefix}/login-help-requests", response_model=LoginHelpRequestRead)
+def create_login_help_request(
+    payload: LoginHelpRequestCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _enforce_rate_limit(
+        "login_help_request",
+        _request_client_ip(request),
+        settings.login_help_rate_limit,
+        settings.login_help_rate_window_seconds,
+    )
+
+    organization_reference = payload.organization_reference.strip() if payload.organization_reference else None
+    details = payload.details.strip()
+    if not details:
+        raise HTTPException(status_code=400, detail="details is required.")
+
+    login_help_request = LoginHelpRequest(
+        organization_reference=organization_reference or None,
+        email=payload.email,
+        details=details,
+        status="new",
+        source="website",
+    )
+    db.add(login_help_request)
+    db.commit()
+    db.refresh(login_help_request)
+    try:
+        send_login_help_request_notification(login_help_request)
+    except Exception:
+        logger.exception(
+            "Failed to send login help notification for request %s.",
+            login_help_request.id,
+        )
+    return login_help_request
 
 
 _RATE_LIMIT_LOCK = threading.Lock()

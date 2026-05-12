@@ -335,7 +335,8 @@ textarea {
 
 .public-form input,
 .request-access-form input,
-.request-access-form textarea {
+.request-access-form textarea,
+.compact-form textarea {
   border: 1px solid rgba(29, 36, 51, 0.12);
   border-radius: 16px;
   padding: 14px 16px;
@@ -347,8 +348,47 @@ textarea {
   resize: vertical;
 }
 
+.compact-form textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
 .request-access-grid {
   grid-template-columns: 1fr 1fr;
+}
+
+.login-help-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(17, 33, 59, 0.12);
+}
+
+.login-help-header h4 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.35rem;
+  letter-spacing: -0.03em;
+  color: var(--miseiq-navy);
+}
+
+.login-help-success {
+  display: grid;
+  gap: 12px;
+  border-radius: 20px;
+  padding: 18px 20px;
+  background: rgba(17, 33, 59, 0.06);
+}
+
+.login-help-success p {
+  margin: 0;
+  color: #4f5b6d;
+}
+
+.login-help-success a {
+  color: var(--miseiq-navy);
+  font-weight: 600;
 }
 
 .request-access-success {

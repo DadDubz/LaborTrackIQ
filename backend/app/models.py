@@ -94,6 +94,18 @@ class AccessRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
+class LoginHelpRequest(Base):
+    __tablename__ = "login_help_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    organization_reference: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    details: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="new")
+    source: Mapped[str] = mapped_column(String(64), default="website")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (UniqueConstraint("organization_id", "email", name="uq_users_org_email"),)

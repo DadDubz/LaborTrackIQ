@@ -54,6 +54,8 @@ class Settings(BaseModel):
     allow_demo_bootstrap: bool = _parse_bool(os.getenv("ALLOW_DEMO_BOOTSTRAP"), False)
     access_request_rate_limit: int = int(os.getenv("ACCESS_REQUEST_RATE_LIMIT", "10"))
     access_request_rate_window_seconds: int = int(os.getenv("ACCESS_REQUEST_RATE_WINDOW_SECONDS", "3600"))
+    login_help_rate_limit: int = int(os.getenv("LOGIN_HELP_RATE_LIMIT", "10"))
+    login_help_rate_window_seconds: int = int(os.getenv("LOGIN_HELP_RATE_WINDOW_SECONDS", "3600"))
     max_request_bytes: int = int(os.getenv("MAX_REQUEST_BYTES", "1048576"))
     auth_rate_limit: int = int(os.getenv("AUTH_RATE_LIMIT", "20"))
     auth_rate_window_seconds: int = int(os.getenv("AUTH_RATE_WINDOW_SECONDS", "60"))
