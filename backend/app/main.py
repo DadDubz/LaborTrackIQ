@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import hmac
 import math
 import threading
@@ -99,6 +100,7 @@ from app.schemas import (
     UserUpdate,
 )
 from app.security import create_access_token, decode_access_token, hash_password, seal_secret, unseal_secret, verify_password
+from app.services.notifications import send_access_request_notification
 from app.services.quickbooks import (
     build_authorization_url,
     exchange_code_for_tokens,
@@ -106,6 +108,8 @@ from app.services.quickbooks import (
     refresh_tokens,
     token_expiry,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def ensure_schedule_shift_publish_columns() -> None:
@@ -213,6 +217,13 @@ def create_access_request(
     db.add(access_request)
     db.commit()
     db.refresh(access_request)
+    try:
+        send_access_request_notification(access_request)
+    except Exception:
+        logger.exception(
+            "Failed to send access request notification for request %s.",
+            access_request.id,
+        )
     return access_request
 
 

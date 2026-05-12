@@ -209,6 +209,26 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             self.assertEqual(access_request.current_tools, "7shifts + spreadsheets")
             self.assertEqual(access_request.notes, "Need better scheduling and payroll visibility.")
 
+    def test_access_request_submission_attempts_notification_email(self):
+        with patch("app.main.send_access_request_notification") as mock_notify:
+            response = self.client.post(
+                "/api/access-requests",
+                json={
+                    "restaurant_name": "Golden Fork Hospitality",
+                    "contact_name": "Morgan Lee",
+                    "email": "morgan@example.com",
+                    "locations": 5,
+                    "current_tools": "Homebase",
+                    "notes": "Interested in payroll exports.",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        mock_notify.assert_called_once()
+        notified_request = mock_notify.call_args.args[0]
+        self.assertEqual(notified_request.restaurant_name, "Golden Fork Hospitality")
+        self.assertEqual(notified_request.email, "morgan@example.com")
+
     def test_demo_bootstrap_endpoint_is_disabled_when_setting_off(self):
         original_bootstrap = settings.allow_demo_bootstrap
         try:
