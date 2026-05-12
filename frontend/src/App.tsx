@@ -618,6 +618,7 @@ export default function App() {
   const [accessRequestError, setAccessRequestError] = useState("");
   const [accessRequestMessage, setAccessRequestMessage] = useState("");
   const [isAccessRequestSubmitting, setIsAccessRequestSubmitting] = useState(false);
+  const [accessRequestSuccess, setAccessRequestSuccess] = useState<AccessRequestResponse | null>(null);
 
   useEffect(() => {
     const storedToken = window.localStorage.getItem("labortrackiq_token");
@@ -1308,6 +1309,7 @@ export default function App() {
     event.preventDefault();
     setAccessRequestError("");
     setAccessRequestMessage("");
+    setAccessRequestSuccess(null);
 
     const restaurantName = accessRequestForm.restaurant_name.trim();
     const contactName = accessRequestForm.contact_name.trim();
@@ -1352,6 +1354,7 @@ export default function App() {
         "",
       )) as AccessRequestResponse;
       setAccessRequestMessage(`Thanks, ${response.contact_name}. Your access request for ${response.restaurant_name} has been received.`);
+      setAccessRequestSuccess(response);
       setAccessRequestForm({
         restaurant_name: "",
         contact_name: "",
@@ -2453,82 +2456,124 @@ export default function App() {
                 <div className="section-heading">
                   <div>
                     <p className="eyebrow">Request Access</p>
-                    <h3>Request a setup conversation</h3>
+                    <h3>{accessRequestSuccess ? "Thanks, your request is in." : "Request a setup conversation"}</h3>
                   </div>
-                  <p className="muted-copy">Tell us about your restaurant and we will follow up about access and setup.</p>
+                  <p className="muted-copy">
+                    {accessRequestSuccess
+                      ? "We received your details and will follow up about access, setup, and next steps."
+                      : "Tell us about your restaurant and we will follow up about access and setup."}
+                  </p>
                 </div>
-                <form className="request-access-form" onSubmit={handleAccessRequestSubmit}>
-                  <div className="request-access-grid">
-                    <label>
-                      Restaurant or Group Name
-                      <input
-                        type="text"
-                        autoComplete="organization"
-                        maxLength={255}
-                        value={accessRequestForm.restaurant_name}
-                        onChange={(event) => setAccessRequestForm({ ...accessRequestForm, restaurant_name: event.target.value })}
-                      />
-                    </label>
-                    <label>
-                      Best Contact Name
-                      <input
-                        type="text"
-                        autoComplete="name"
-                        maxLength={255}
-                        value={accessRequestForm.contact_name}
-                        onChange={(event) => setAccessRequestForm({ ...accessRequestForm, contact_name: event.target.value })}
-                      />
-                    </label>
-                    <label>
-                      Contact Email
-                      <input
-                        type="email"
-                        autoComplete="email"
-                        maxLength={255}
-                        value={accessRequestForm.email}
-                        onChange={(event) => setAccessRequestForm({ ...accessRequestForm, email: event.target.value })}
-                      />
-                    </label>
-                    <label>
-                      Number of Locations
-                      <input
-                        type="number"
-                        min="1"
-                        max="10000"
-                        inputMode="numeric"
-                        value={accessRequestForm.locations}
-                        onChange={(event) => setAccessRequestForm({ ...accessRequestForm, locations: event.target.value })}
-                      />
-                    </label>
+                {accessRequestSuccess ? (
+                  <div className="request-access-success">
+                    <div className="request-access-success-card">
+                      <p className="eyebrow">Request Received</p>
+                      <h4>{accessRequestSuccess.restaurant_name}</h4>
+                      <p>
+                        We received your request for <strong>{accessRequestSuccess.contact_name}</strong> and will follow up at{" "}
+                        <strong>{accessRequestSuccess.email}</strong>.
+                      </p>
+                    </div>
+                    <div className="request-access-success-grid">
+                      <div className="story-list-item">
+                        <strong>What happens next</strong>
+                        <p>We review your restaurant details, confirm fit, and reach out about setup and access.</p>
+                      </div>
+                      <div className="story-list-item">
+                        <strong>Need to add details?</strong>
+                        <p>Email <a href="mailto:info@labortrackiq.com">info@labortrackiq.com</a> and we can update your request.</p>
+                      </div>
+                    </div>
+                    <div className="action-row">
+                      <button
+                        className="primary-button"
+                        type="button"
+                        onClick={() => {
+                          setAccessRequestSuccess(null);
+                          setAccessRequestMessage("");
+                        }}
+                      >
+                        Submit Another Request
+                      </button>
+                      <button className="ghost-button" type="button" onClick={() => navigatePublicPage("login")}>
+                        Back To Login
+                      </button>
+                    </div>
                   </div>
-                  <label>
-                    Current Scheduling or Payroll Tools
-                      <input
-                        type="text"
-                        maxLength={500}
-                        value={accessRequestForm.current_tools}
-                        onChange={(event) => setAccessRequestForm({ ...accessRequestForm, current_tools: event.target.value })}
+                ) : (
+                  <form className="request-access-form" onSubmit={handleAccessRequestSubmit}>
+                    <div className="request-access-grid">
+                      <label>
+                        Restaurant or Group Name
+                        <input
+                          type="text"
+                          autoComplete="organization"
+                          maxLength={255}
+                          value={accessRequestForm.restaurant_name}
+                          onChange={(event) => setAccessRequestForm({ ...accessRequestForm, restaurant_name: event.target.value })}
+                        />
+                      </label>
+                      <label>
+                        Best Contact Name
+                        <input
+                          type="text"
+                          autoComplete="name"
+                          maxLength={255}
+                          value={accessRequestForm.contact_name}
+                          onChange={(event) => setAccessRequestForm({ ...accessRequestForm, contact_name: event.target.value })}
+                        />
+                      </label>
+                      <label>
+                        Contact Email
+                        <input
+                          type="email"
+                          autoComplete="email"
+                          maxLength={255}
+                          value={accessRequestForm.email}
+                          onChange={(event) => setAccessRequestForm({ ...accessRequestForm, email: event.target.value })}
+                        />
+                      </label>
+                      <label>
+                        Number of Locations
+                        <input
+                          type="number"
+                          min="1"
+                          max="10000"
+                          inputMode="numeric"
+                          value={accessRequestForm.locations}
+                          onChange={(event) => setAccessRequestForm({ ...accessRequestForm, locations: event.target.value })}
+                        />
+                      </label>
+                    </div>
+                    <label>
+                      Current Scheduling or Payroll Tools
+                        <input
+                          type="text"
+                          maxLength={500}
+                          value={accessRequestForm.current_tools}
+                          onChange={(event) => setAccessRequestForm({ ...accessRequestForm, current_tools: event.target.value })}
+                        />
+                    </label>
+                    <label>
+                      What do you want help with first?
+                      <textarea
+                        maxLength={2000}
+                        value={accessRequestForm.notes}
+                        onChange={(event) => setAccessRequestForm({ ...accessRequestForm, notes: event.target.value })}
                       />
-                  </label>
-                  <label>
-                    What do you want help with first?
-                    <textarea
-                      maxLength={2000}
-                      value={accessRequestForm.notes}
-                      onChange={(event) => setAccessRequestForm({ ...accessRequestForm, notes: event.target.value })}
-                    />
-                  </label>
-                  <div className="action-row">
-                    <button className="primary-button" type="submit" disabled={isAccessRequestSubmitting}>
-                      {isAccessRequestSubmitting ? "Submitting..." : "Submit Request"}
-                    </button>
-                    <button className="ghost-button" type="button" onClick={() => navigatePublicPage("login")}>
-                      Back To Login
-                    </button>
-                  </div>
-                </form>
+                    </label>
+                    <div className="action-row">
+                      <button className="primary-button" type="submit" disabled={isAccessRequestSubmitting}>
+                        {isAccessRequestSubmitting ? "Submitting..." : "Submit Request"}
+                      </button>
+                      <button className="ghost-button" type="button" onClick={() => navigatePublicPage("login")}>
+                        Back To Login
+                      </button>
+                    </div>
+                  </form>
+                )}
                 {accessRequestError ? <div className="inline-error">{accessRequestError}</div> : null}
-                {accessRequestMessage ? <div className="inline-message">{accessRequestMessage}</div> : null}
+                {accessRequestMessage && !accessRequestSuccess ? <div className="inline-message">{accessRequestMessage}</div> : null}
               </article>
 
               <aside className="story-panel compact-story-panel">

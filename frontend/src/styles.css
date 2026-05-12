@@ -351,6 +351,45 @@ textarea {
   grid-template-columns: 1fr 1fr;
 }
 
+.request-access-success {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.request-access-success-card {
+  border-radius: 22px;
+  padding: 22px 24px;
+  background:
+    radial-gradient(circle at top right, rgba(196, 154, 86, 0.18), transparent 38%),
+    linear-gradient(180deg, rgba(255, 251, 244, 0.98), rgba(244, 239, 230, 0.95));
+  border: 1px solid rgba(196, 154, 86, 0.22);
+}
+
+.request-access-success-card h4 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.55rem;
+  letter-spacing: -0.03em;
+  color: var(--miseiq-navy);
+}
+
+.request-access-success-card p {
+  margin: 10px 0 0;
+  color: #4f5b6d;
+}
+
+.request-access-success-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.request-access-success-grid a {
+  color: var(--miseiq-navy);
+  font-weight: 600;
+}
+
 .login-support-card,
 .story-list-item {
   background: rgba(17, 33, 59, 0.06);
@@ -1374,6 +1413,7 @@ textarea {
 
   .public-stat-row,
   .request-access-grid,
+  .request-access-success-grid,
   .kiosk-layout,
   .hero-panel,
   .dashboard-grid {
