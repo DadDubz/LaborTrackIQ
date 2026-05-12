@@ -85,6 +85,7 @@ Then open the forwarded frontend port in Codespaces and use that URL in your bro
 
 QuickBooks setup details live in `docs/quickbooks-setup.md`.
 Deployment guidance lives in `docs/deployment-runbook.md`.
+Launch preparation guidance lives in `docs/launch-checklist.md`.
 
 ## Database Migrations
 
