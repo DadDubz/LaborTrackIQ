@@ -361,8 +361,56 @@ textarea {
   gap: 24px;
 }
 
+.legal-story-panel {
+  padding: 34px 40px;
+}
+
+.legal-story-copy h1 {
+  max-width: 13ch;
+}
+
 .compact-story-panel {
   align-self: start;
+}
+
+.public-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px 28px;
+  background: linear-gradient(180deg, rgba(255, 250, 242, 0.92), rgba(242, 232, 211, 0.88));
+  border-color: rgba(186, 154, 96, 0.24);
+}
+
+.public-footer-copy {
+  display: grid;
+  gap: 6px;
+  max-width: 42rem;
+}
+
+.public-footer-copy h3 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: -0.03em;
+  color: var(--miseiq-navy);
+}
+
+.public-footer-copy p {
+  margin: 0;
+  color: #4f5b6d;
+}
+
+.public-footer-copy a {
+  color: var(--miseiq-navy);
+  font-weight: 600;
+}
+
+.public-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .brand-banner {
@@ -1362,7 +1410,8 @@ textarea {
   .schedule-toolbar,
   .brand-banner,
   .public-header,
-  .login-card-header {
+  .login-card-header,
+  .public-footer {
     flex-direction: column;
   }
 
@@ -1376,6 +1425,10 @@ textarea {
 
   .schedule-week-meta {
     justify-items: start;
+  }
+
+  .public-footer-actions {
+    justify-content: flex-start;
   }
 }
 
@@ -1394,6 +1447,10 @@ textarea {
   }
 
   .public-header {
+    padding: 24px;
+  }
+
+  .public-footer {
     padding: 24px;
   }
 

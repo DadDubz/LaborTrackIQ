@@ -257,7 +257,7 @@ type KeypadField = "employee" | "pin";
 type RequestQueueTab = "pending" | "approved";
 type EmployeeRequestQueueTab = "pending" | "approved";
 type RequestBoardTab = "time_off" | "shift_changes";
-type PublicPage = "login" | "about";
+type PublicPage = "login" | "about" | "privacy" | "terms";
 
 const DEMO_BOOTSTRAP_ENABLED = String(import.meta.env.VITE_ENABLE_DEMO_BOOTSTRAP ?? "").toLowerCase() === "true";
 const API_BASE = String(import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api").replace(/\/+$/, "");
@@ -269,7 +269,16 @@ const SHIFT_TEMPLATES = [
 ] as const;
 
 function readPublicPageFromHash(hash: string): PublicPage {
-  return hash === "#about" ? "about" : "login";
+  if (hash === "#about") {
+    return "about";
+  }
+  if (hash === "#privacy") {
+    return "privacy";
+  }
+  if (hash === "#terms") {
+    return "terms";
+  }
+  return "login";
 }
 
 function formatShiftWindow(shift: Shift) {
@@ -1280,7 +1289,13 @@ export default function App() {
   }
 
   function navigatePublicPage(page: PublicPage) {
-    const hash = page === "about" ? "#about" : "#login";
+    const hash = page === "about"
+      ? "#about"
+      : page === "privacy"
+        ? "#privacy"
+        : page === "terms"
+          ? "#terms"
+          : "#login";
     setPublicPage(page);
     if (window.location.hash !== hash) {
       window.location.hash = hash;
@@ -2364,7 +2379,7 @@ export default function App() {
               </article>
             </section>
           </>
-        ) : (
+        ) : publicPage === "about" ? (
           <section className="info-page-shell">
             <article className="story-panel">
               <div className="story-panel-grid">
@@ -2536,7 +2551,99 @@ export default function App() {
               </aside>
             </section>
           </section>
+        ) : (
+          <section className="info-page-shell">
+            <article className="story-panel legal-story-panel">
+              <div className="story-panel-copy legal-story-copy">
+                <p className="eyebrow">{publicPage === "privacy" ? "Privacy" : "Terms"}</p>
+                <h1>{publicPage === "privacy" ? "Privacy and data handling for restaurant teams." : "Terms for using LaborTrackIQ."}</h1>
+                <p className="marketing-lede">
+                  {publicPage === "privacy"
+                    ? "LaborTrackIQ is built to help restaurant operators manage workforce activity while keeping access, labor records, and submitted business information handled with care."
+                    : "LaborTrackIQ is provided for restaurant workforce operations, scheduling, labor review, and connected payroll workflows. Access is intended for approved restaurant organizations and their authorized team members."}
+                </p>
+              </div>
+            </article>
+
+            {publicPage === "privacy" ? (
+              <div className="info-page-grid">
+                <article className="feature-card">
+                  <p className="eyebrow">What We Collect</p>
+                  <h3>Business and workforce details</h3>
+                  <p>We may collect restaurant contact information, organization setup details, employee labor records, schedules, time entries, and request data needed to operate the platform.</p>
+                  <p>Request-access submissions are used to follow up about onboarding, setup, and product fit.</p>
+                </article>
+
+                <article className="feature-card">
+                  <p className="eyebrow">How We Use It</p>
+                  <h3>Operations, support, and onboarding</h3>
+                  <p>Submitted information is used to provide workforce tools, support approved restaurant teams, improve the product, and coordinate setup with customers.</p>
+                  <p>We do not add restaurants to marketing workflows unrelated to LaborTrackIQ onboarding without permission.</p>
+                </article>
+
+                <article className="feature-card">
+                  <p className="eyebrow">Access and Protection</p>
+                  <h3>Limited access for authorized users</h3>
+                  <p>Restaurant owners, admins, managers, and employees should only access the information needed for their role. Internal access should stay limited to support, setup, and operational needs.</p>
+                </article>
+
+                <article className="feature-card">
+                  <p className="eyebrow">Questions</p>
+                  <h3>Need help or have a privacy question?</h3>
+                  <p>For support, access questions, or privacy-related follow-up, contact <a href="mailto:info@labortrackiq.com">info@labortrackiq.com</a>.</p>
+                </article>
+              </div>
+            ) : (
+              <div className="info-page-grid">
+                <article className="feature-card">
+                  <p className="eyebrow">Authorized Use</p>
+                  <h3>For approved restaurant organizations</h3>
+                  <p>LaborTrackIQ is intended for restaurant operators and their approved team members. Each organization is responsible for the accuracy of its schedules, employee records, and payroll-related workflows.</p>
+                </article>
+
+                <article className="feature-card">
+                  <p className="eyebrow">Account Responsibility</p>
+                  <h3>Protect credentials and shared devices</h3>
+                  <p>Admins and managers are responsible for keeping login credentials secure and managing access to shared clock-in devices used by staff.</p>
+                </article>
+
+                <article className="feature-card">
+                  <p className="eyebrow">Operational Use</p>
+                  <h3>Review exported and payroll-connected data</h3>
+                  <p>Restaurants should review schedules, approvals, timesheets, and accounting-connected exports before using them for payroll or financial decisions.</p>
+                </article>
+
+                <article className="feature-card">
+                  <p className="eyebrow">Support</p>
+                  <h3>Questions about access or usage?</h3>
+                  <p>For support, account questions, or onboarding help, contact <a href="mailto:info@labortrackiq.com">info@labortrackiq.com</a>.</p>
+                </article>
+              </div>
+            )}
+          </section>
         )}
+
+        <footer className="public-footer panel">
+          <div className="public-footer-copy">
+            <p className="eyebrow">Support</p>
+            <h3>LaborTrackIQ for restaurant operators</h3>
+            <p>Questions about access, onboarding, or setup? Reach us at <a href="mailto:info@labortrackiq.com">info@labortrackiq.com</a>.</p>
+          </div>
+          <div className="public-footer-actions">
+            <button className={publicPage === "login" ? "tab active-tab" : "tab"} type="button" onClick={() => navigatePublicPage("login")}>
+              Login
+            </button>
+            <button className={publicPage === "about" ? "tab active-tab" : "tab"} type="button" onClick={() => navigatePublicPage("about")}>
+              Learn More
+            </button>
+            <button className={publicPage === "privacy" ? "tab active-tab" : "tab"} type="button" onClick={() => navigatePublicPage("privacy")}>
+              Privacy
+            </button>
+            <button className={publicPage === "terms" ? "tab active-tab" : "tab"} type="button" onClick={() => navigatePublicPage("terms")}>
+              Terms
+            </button>
+          </div>
+        </footer>
       </div>
     );
   }
