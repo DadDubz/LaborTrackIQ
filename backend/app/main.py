@@ -5,6 +5,7 @@ import hmac
 import math
 import threading
 import time
+import uuid
 from datetime import date, datetime
 from collections import deque
 from typing import Optional
@@ -48,6 +49,7 @@ from app.schemas import (
     AccessRequestCreate,
     AccessRequestRead,
     AuditEventRead,
+    ClientMonitoringEventCreate,
     AvailabilityRequestCreate,
     AvailabilityRequestRead,
     AvailabilityRequestUpdate,
@@ -103,7 +105,12 @@ from app.schemas import (
     UserUpdate,
 )
 from app.security import create_access_token, decode_access_token, hash_password, seal_secret, unseal_secret, verify_password
-from app.services.notifications import send_access_request_notification, send_login_help_request_notification
+from app.services.notifications import (
+    send_access_request_confirmation,
+    send_access_request_notification,
+    send_login_help_request_confirmation,
+    send_login_help_request_notification,
+)
 from app.services.quickbooks import (
     build_authorization_url,
     exchange_code_for_tokens,
@@ -184,6 +191,15 @@ async def enforce_request_size_limit(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def attach_request_id(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
 @app.post(f"{settings.api_prefix}/access-requests", response_model=AccessRequestRead)
 def create_access_request(
     payload: AccessRequestCreate,
@@ -222,6 +238,7 @@ def create_access_request(
     db.refresh(access_request)
     try:
         send_access_request_notification(access_request)
+        send_access_request_confirmation(access_request)
     except Exception:
         logger.exception(
             "Failed to send access request notification for request %s.",
@@ -260,12 +277,41 @@ def create_login_help_request(
     db.refresh(login_help_request)
     try:
         send_login_help_request_notification(login_help_request)
+        send_login_help_request_confirmation(login_help_request)
     except Exception:
         logger.exception(
             "Failed to send login help notification for request %s.",
             login_help_request.id,
         )
     return login_help_request
+
+
+@app.post(f"{settings.api_prefix}/client-monitoring-events", response_model=dict)
+def create_client_monitoring_event(
+    payload: ClientMonitoringEventCreate,
+    request: Request,
+):
+    _enforce_rate_limit(
+        "client_monitoring_event",
+        _request_client_ip(request),
+        settings.client_monitoring_rate_limit,
+        settings.client_monitoring_rate_window_seconds,
+    )
+
+    request_id = getattr(request.state, "request_id", "unknown")
+    logger.error(
+        "Client monitoring event received",
+        extra={
+            "request_id": request_id,
+            "category": payload.category.strip(),
+            "message": payload.message.strip(),
+            "source": payload.source.strip() if payload.source else None,
+            "url": payload.url.strip() if payload.url else None,
+            "user_agent": payload.user_agent.strip() if payload.user_agent else None,
+            "stack": payload.stack.strip() if payload.stack else None,
+        },
+    )
+    return {"message": "Monitoring event received.", "request_id": request_id}
 
 
 _RATE_LIMIT_LOCK = threading.Lock()

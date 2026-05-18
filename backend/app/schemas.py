@@ -67,6 +67,15 @@ class LoginHelpRequestRead(BaseModel):
     created_at: datetime
 
 
+class ClientMonitoringEventCreate(BaseModel):
+    category: str = Field(min_length=1, max_length=64)
+    message: str = Field(min_length=1, max_length=2000)
+    source: Optional[str] = Field(default=None, max_length=255)
+    url: Optional[str] = Field(default=None, max_length=500)
+    user_agent: Optional[str] = Field(default=None, max_length=500)
+    stack: Optional[str] = Field(default=None, max_length=4000)
+
+
 class UserCreate(BaseModel):
     organization_id: int
     full_name: str = Field(min_length=1, max_length=255)

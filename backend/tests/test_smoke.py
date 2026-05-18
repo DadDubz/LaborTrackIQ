@@ -211,7 +211,9 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             self.assertEqual(access_request.notes, "Need better scheduling and payroll visibility.")
 
     def test_access_request_submission_attempts_notification_email(self):
-        with patch("app.main.send_access_request_notification") as mock_notify:
+        with patch("app.main.send_access_request_notification") as mock_notify, patch(
+            "app.main.send_access_request_confirmation"
+        ) as mock_confirmation:
             response = self.client.post(
                 "/api/access-requests",
                 json={
@@ -226,6 +228,7 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200, response.text)
         mock_notify.assert_called_once()
+        mock_confirmation.assert_called_once()
         notified_request = mock_notify.call_args.args[0]
         self.assertEqual(notified_request.restaurant_name, "Golden Fork Hospitality")
         self.assertEqual(notified_request.email, "morgan@example.com")
@@ -257,7 +260,9 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
             )
 
     def test_login_help_request_submission_attempts_notification_email(self):
-        with patch("app.main.send_login_help_request_notification") as mock_notify:
+        with patch("app.main.send_login_help_request_notification") as mock_notify, patch(
+            "app.main.send_login_help_request_confirmation"
+        ) as mock_confirmation:
             response = self.client.post(
                 "/api/login-help-requests",
                 json={
@@ -269,9 +274,27 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200, response.text)
         mock_notify.assert_called_once()
+        mock_confirmation.assert_called_once()
         notified_request = mock_notify.call_args.args[0]
         self.assertEqual(notified_request.organization_reference, "Org 4")
         self.assertEqual(notified_request.email, "manager@example.com")
+
+    def test_client_monitoring_event_returns_request_id(self):
+        response = self.client.post(
+            "/api/client-monitoring-events",
+            json={
+                "category": "frontend_error",
+                "message": "Unhandled promise rejection in public login flow",
+                "source": "window.unhandledrejection",
+                "url": "https://labor-track-iq.vercel.app/#login",
+                "user_agent": "test-agent",
+                "stack": "Error: test stack",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["message"], "Monitoring event received.")
+        self.assertTrue(payload["request_id"])
 
     def test_demo_bootstrap_endpoint_is_disabled_when_setting_off(self):
         original_bootstrap = settings.allow_demo_bootstrap

@@ -445,6 +445,26 @@ function parseApiErrorDetail(data: unknown, fallback: string): string {
   return fallback;
 }
 
+async function postClientMonitoringEvent(payload: {
+  category: string;
+  message: string;
+  source?: string | null;
+  url?: string | null;
+  user_agent?: string | null;
+  stack?: string | null;
+}) {
+  try {
+    await fetch(`${API_BASE}/client-monitoring-events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    });
+  } catch {
+    // Intentionally swallow client monitoring transport errors.
+  }
+}
+
 function readStoredAdminUser(raw: string | null): User | null {
   if (!raw) {
     return null;
@@ -662,6 +682,44 @@ export default function App() {
     const syncPublicPage = () => setPublicPage(readPublicPageFromHash(window.location.hash));
     window.addEventListener("hashchange", syncPublicPage);
     return () => window.removeEventListener("hashchange", syncPublicPage);
+  }, []);
+
+  useEffect(() => {
+    const handleWindowError = (event: ErrorEvent) => {
+      void postClientMonitoringEvent({
+        category: "frontend_error",
+        message: event.message || "Unknown frontend error",
+        source: event.filename || "window.error",
+        url: window.location.href,
+        user_agent: window.navigator.userAgent,
+        stack: event.error instanceof Error ? event.error.stack ?? null : null,
+      });
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      const message = reason instanceof Error
+        ? reason.message
+        : typeof reason === "string"
+          ? reason
+          : "Unhandled promise rejection";
+      const stack = reason instanceof Error ? reason.stack ?? null : null;
+      void postClientMonitoringEvent({
+        category: "unhandled_rejection",
+        message,
+        source: "window.unhandledrejection",
+        url: window.location.href,
+        user_agent: window.navigator.userAgent,
+        stack,
+      });
+    };
+
+    window.addEventListener("error", handleWindowError);
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+    return () => {
+      window.removeEventListener("error", handleWindowError);
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+    };
   }, []);
 
   useEffect(() => {

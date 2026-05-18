@@ -151,6 +151,16 @@ Run the backend smoke suite with:
 
 The smoke tests cover launch-critical flows like employee self-service auth, duplicate identity protection, report recipient handling, and payroll-only labor export behavior.
 
+Run the frontend Playwright smoke suite with:
+
+```bash
+cd frontend
+npx playwright install chromium
+npm run test:smoke
+```
+
+The Playwright suite covers public marketing navigation, request-access confirmation, and login-help recovery flow confirmation.
+
 ## Health Endpoints
 
 - `GET /health`

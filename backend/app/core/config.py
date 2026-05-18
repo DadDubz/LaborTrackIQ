@@ -42,6 +42,7 @@ class Settings(BaseModel):
     smtp_use_tls: bool = _parse_bool(os.getenv("SMTP_USE_TLS"), True)
     smtp_use_ssl: bool = _parse_bool(os.getenv("SMTP_USE_SSL"), False)
     smtp_timeout_seconds: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "20"))
+    support_reply_to_email: str = os.getenv("SUPPORT_REPLY_TO_EMAIL", "info@labortrackiq.com")
     quickbooks_client_id: str = os.getenv("QUICKBOOKS_CLIENT_ID", "")
     quickbooks_client_secret: str = os.getenv("QUICKBOOKS_CLIENT_SECRET", "")
     quickbooks_redirect_uri: str = os.getenv(
@@ -56,6 +57,8 @@ class Settings(BaseModel):
     access_request_rate_window_seconds: int = int(os.getenv("ACCESS_REQUEST_RATE_WINDOW_SECONDS", "3600"))
     login_help_rate_limit: int = int(os.getenv("LOGIN_HELP_RATE_LIMIT", "10"))
     login_help_rate_window_seconds: int = int(os.getenv("LOGIN_HELP_RATE_WINDOW_SECONDS", "3600"))
+    client_monitoring_rate_limit: int = int(os.getenv("CLIENT_MONITORING_RATE_LIMIT", "30"))
+    client_monitoring_rate_window_seconds: int = int(os.getenv("CLIENT_MONITORING_RATE_WINDOW_SECONDS", "3600"))
     max_request_bytes: int = int(os.getenv("MAX_REQUEST_BYTES", "1048576"))
     auth_rate_limit: int = int(os.getenv("AUTH_RATE_LIMIT", "20"))
     auth_rate_window_seconds: int = int(os.getenv("AUTH_RATE_WINDOW_SECONDS", "60"))
