@@ -304,7 +304,7 @@ def create_client_monitoring_event(
         extra={
             "request_id": request_id,
             "category": payload.category.strip(),
-            "message": payload.message.strip(),
+            "client_message": payload.message.strip(),
             "source": payload.source.strip() if payload.source else None,
             "url": payload.url.strip() if payload.url else None,
             "user_agent": payload.user_agent.strip() if payload.user_agent else None,
