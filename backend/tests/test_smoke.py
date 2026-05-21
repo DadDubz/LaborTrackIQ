@@ -56,6 +56,7 @@ class LaborTrackIQSmokeTests(unittest.TestCase):
 
     def setUp(self):
         reset_rate_limit_state()
+        settings.allow_demo_bootstrap = True
         Base.metadata.drop_all(bind=engine)
         Base.metadata.create_all(bind=engine)
         ensure_schedule_shift_publish_columns()
